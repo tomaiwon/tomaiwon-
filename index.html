@@ -26,7 +26,7 @@
     display:flex;justify-content:space-between;align-items:center;color:var(--txt)}
   .sect h3 span{color:var(--dim);font-weight:400}
 
-  #presets{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;max-height:210px;overflow-y:auto}
+  #presets{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
   .preset{background:transparent;border:1px solid var(--line);color:var(--txt);border-radius:5px;
     padding:6px 2px;font-size:11px;cursor:pointer;white-space:nowrap;overflow:hidden}
   .preset:hover{border-color:#5a5f66}
@@ -62,6 +62,7 @@
   .mini.on{background:var(--go);color:var(--goInk);border-color:var(--go)}
   select{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:4px}
   .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .scale{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:4px}
   .hint{font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6}
 
   @media(max-width:860px){#app{flex-direction:column}#panel{width:100%;border-left:0;border-top:1px solid var(--line)}
@@ -74,7 +75,7 @@
 
   <aside id="panel">
     <div class="sect">
-      <h3>风格预设 <span>单击套用 · Shift 多选混抽</span></h3>
+      <h3>风格预设 <span>按复杂度排序 · Shift 多选混抽</span></h3>
       <div id="presets"></div>
       <div class="banner" id="go">LotGO</div>
       <div class="metaRow">
@@ -90,61 +91,61 @@
     </div>
 
     <div class="sect">
+      <h3>复杂度 <span id="density-out"></span></h3>
+      <input type="range" data-key="density" min="0" max="100" step="1">
+      <div class="scale"><span>极简</span><span>克制</span><span>编辑</span><span>繁复</span></div>
+      <div class="hint">这一条决定画面上有多少东西，以及边距多大。<br>极简不是"少放几个"，是边距更大、只留主角。</div>
+    </div>
+
+    <div class="sect">
+      <h3>醒目与颜色</h3>
+      <div class="row"><span>强调色预算（全图）</span><span id="accentBudget-out"></span></div>
+      <input type="range" data-key="accentBudget" min="0" max="3" step="1">
+      <div class="row"><span>标题大小</span><span id="titleScale-out"></span></div>
+      <input type="range" data-key="titleScale" min="-40" max="60" step="1">
+      <label class="cb" style="margin-top:8px"><input type="checkbox" id="tickType" checked><span>刻度字</span></label>
+      <div class="hint">字号和字色都由「角色」推出来：主角拿满对比，
+      第二位退到 62%，其余降到 22%。强调色是有预算的，花完就没了。</div>
+    </div>
+
+    <div class="sect">
+      <h3>图像处理</h3>
+      <label class="cb"><input type="checkbox" id="duotone" checked><span>双色调（把照片压进页面色系）</span></label>
+      <div class="row"><span>强度</span><span id="duotoneAmount-out"></span></div>
+      <input type="range" data-key="duotoneAmount" min="0" max="100" step="1">
+      <div class="row"><span>混合方式</span><span></span></div>
+      <div class="seg" data-key="imgBlend">
+        <button data-v="normal">正常</button>
+        <button data-v="multiply">正片叠底</button>
+        <button data-v="screen">滤色</button>
+        <button data-v="luminosity">明度</button>
+      </div>
+      <div class="hint">照片直接贴上去，图和页面就是两套东西。<br>去色后把明暗映射到墨色↔底色之间，才是一套。</div>
+    </div>
+
+    <div class="sect">
       <h3>图层</h3>
       <div id="layers"></div>
-      <div id="modes"></div>
+      <div class="seg" data-key="gridMode" style="margin-top:8px">
+        <button data-v="ortho">正交</button>
+        <button data-v="skew">非正交</button>
+      </div>
     </div>
 
     <div class="sect">
       <h3>画面调色 <label class="cb"><input type="checkbox" id="colorOn" checked><span>生效</span></label></h3>
       <div class="row"><span>对比度</span><span id="contrast-out"></span></div>
-      <input type="range" id="contrast" data-path="color.contrast" min="50" max="200" step="1">
+      <input type="range" data-key="contrast" min="50" max="200" step="1">
       <div class="row"><span>饱和</span><span id="saturate-out"></span></div>
-      <input type="range" id="saturate" data-path="color.saturate" min="0" max="200" step="1">
+      <input type="range" data-key="saturate" min="0" max="200" step="1">
       <div class="row"><span>明暗</span><span id="brightness-out"></span></div>
-      <input type="range" id="brightness" data-path="color.brightness" min="50" max="160" step="1">
-      <div class="row"><span>纹理</span><span id="texStrength-out"></span></div>
+      <input type="range" data-key="brightness" min="50" max="160" step="1">
+      <div class="row"><span>纹理</span><span id="textureStrength-out"></span></div>
       <div style="display:flex;gap:8px;align-items:center">
         <select id="texSel"><option>W-0</option><option>W-1</option><option>W-2</option></select>
-        <input type="range" id="texStrength" data-path="color.textureStrength" min="0" max="100" step="1">
+        <input type="range" data-key="textureStrength" min="0" max="100" step="1">
       </div>
-    </div>
-
-    <div class="sect">
-      <h3>网格与结构 <span id="gridStrength-out"></span></h3>
-      <input type="range" id="gridStrength" data-path="grid.strength" min="0.4" max="1.6" step="0.05">
-      <div class="seg" id="gridMode">
-        <button data-v="ortho">正交</button>
-        <button data-v="skew">非正交</button>
-        <button data-v="curve">数学曲线</button>
-      </div>
-    </div>
-
-    <div class="sect">
-      <h3>标题组 <span>合计 <b id="bigGroups-out"></b>+<b id="subGroups-out"></b> 组</span></h3>
-      <div class="row"><span>标题整体大小</span><span id="titleScale-out"></span></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="range" id="titleScale" data-path="type.titleScale" min="-40" max="60" step="1">
-        <button class="mini" id="lockSize">固化大小</button>
-      </div>
-      <label class="cb" style="margin-top:8px"><input type="checkbox" id="tickType" checked><span>刻度字</span></label>
-      <div class="row"><span>大标题组数量</span><span></span></div>
-      <input type="range" id="bigGroups" data-path="type.bigTitleGroups" min="1" max="3" step="1">
-      <div class="row"><span>小标题组数量</span><span></span></div>
-      <input type="range" id="subGroups" data-path="type.subTitleGroups" min="0" max="6" step="1">
-      <div class="row"><span>小标题相对大小</span><span id="subRel-out"></span></div>
-      <input type="range" id="subRel" data-path="type.subRelSize" min="10" max="80" step="1">
-      <div class="seg" id="align">
-        <button data-v="left">左右</button>
-        <button data-v="center">居中</button>
-        <button data-v="array">阵列</button>
-        <button data-v="random">随机</button>
-      </div>
-      <div class="row"><span>散文诗数量</span><span id="proseCount-out"></span></div>
-      <input type="range" id="proseCount" data-path="type.proseCount" min="0" max="4" step="1">
-      <div class="row"><span>散文诗大小</span><span id="proseSize-out"></span></div>
-      <input type="range" id="proseSize" data-path="type.proseSize" min="5" max="60" step="1">
-      <div class="hint">空格 = 抽一张 · ← → = 翻上一张/下一张<br>本页面仅作机制演示，字体版权归原权利人所有。</div>
+      <div class="hint">空格 = 抽一张 · ← → = 翻页<br>仅作机制演示，字体版权归原权利人所有。</div>
     </div>
   </aside>
 </div>
