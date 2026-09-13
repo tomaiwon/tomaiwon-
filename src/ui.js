@@ -87,7 +87,9 @@ function step(d) {
 
 function fitBoard() {
   const stage = $('#stage');
-  const k = Math.min((stage.clientWidth - 48) / 1080, (stage.clientHeight - 48) / 1512);
+  // 容器高度算不出来时别给出负的缩放，否则画板会翻转并消失
+  const k = Math.max(0.05, Math.min((stage.clientWidth - 48) / 1080,
+                                    (stage.clientHeight - 48) / 1512));
   board.style.transform = `scale(${k})`;
 }
 
