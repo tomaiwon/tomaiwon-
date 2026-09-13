@@ -209,10 +209,24 @@ function proceduralImage(r, pal) {
     </svg>`);
 }
 
+/* 用户自己填的文案优先；留空才回文案池。
+   支持用 | 分隔多条，抽卡时随机取一条。 */
+function pickCopy(custom, pool, r, used) {
+  const list = (custom || '').split('|').map(t => t.trim()).filter(Boolean);
+  const src = list.length ? list : pool;
+  if (!used) return r.pick(src);
+  // 同一张图里尽量不重复；实在只有一条可选就认了
+  const fresh = src.filter(t => !used.has(t));
+  const t = r.pick(fresh.length ? fresh : src);
+  used.add(t);
+  return t;
+}
+
 /* ---------- 6. 主合成函数 ---------- */
 function compose(P, seed, userImages = []) {
   const r = new Rng(seed);
-  const W = 1080, H = 1512;
+  const W = (P.size && P.size.w) || 1080;
+  const H = (P.size && P.size.h) || 1512;
   const pal = P.palette ? PALETTES.find(p => p.name === P.palette) || r.pick(PALETTES) : r.pick(PALETTES);
   const fontKey = P.font && FONTS[P.font] ? P.font : r.pick(Object.keys(FONTS));
   const F = FONTS[fontKey];
@@ -227,6 +241,7 @@ function compose(P, seed, userImages = []) {
   const box = ARCHETYPES[archKey](frame, r);
 
   const els = [];
+  const usedText = new Set();   // 同一张图内的文案去重
   const taken = [];          // 已占据的版面区域
   const push = (layer, el) => { if (P.layers[layer] !== false) els.push({ layer, ...el }); };
 
@@ -292,10 +307,13 @@ function compose(P, seed, userImages = []) {
 
   for (let g = 0; g < P.type.bigTitleGroups; g++) {
     const useCJK = r.chance(0.42);
-    const text = useCJK ? r.pick(COPY.cjkTitle) : r.pick(COPY.latTitle);
-    const tFont = useCJK ? F.cjk : F.lat;
-    const tWeight = useCJK ? 400 : r.pick([300, 400, 700]);
-    const track = useCJK ? r.range(0, 0.18) : r.range(-0.02, 0.14);
+    const C = P.copy || {};
+    const text = C.title ? pickCopy(C.title, COPY.latTitle, r, usedText)
+               : pickCopy(null, useCJK ? COPY.cjkTitle : COPY.latTitle, r, usedText);
+    const cjkText = isCJK(text);
+    const tFont = cjkText ? F.cjk : F.lat;
+    const tWeight = cjkText ? 400 : r.pick([300, 400, 700]);
+    const track = cjkText ? r.range(0, 0.18) : r.range(-0.02, 0.14);
     const fit = fitFontSize(text, heroBox.w, track, tFont, tWeight);
     let fs = fit * titleScale;   // 0% = 正好撑满栏宽；调大就故意出血（参考原作的巨字裁切）
     if (P.type.lockSize) fs = Math.min(fs, heroBox.w / 5);
@@ -323,9 +341,11 @@ function compose(P, seed, userImages = []) {
   for (let g = 0; g < P.type.subTitleGroups; g++) {
     const hostB = subBoxes[g % subBoxes.length];
     const useCJK = r.chance(0.5);
-    const text = useCJK ? r.pick(COPY.cjkSub) : r.pick(COPY.latSub);
+    const C2 = P.copy || {};
+    const text = C2.sub ? pickCopy(C2.sub, COPY.latSub, r, usedText)
+               : pickCopy(null, useCJK ? COPY.cjkSub : COPY.latSub, r, usedText);
     const w = hostB.w * r.range(0.35, 0.8);
-    const sFont = useCJK ? F.cjk : F.lat;
+    const sFont = isCJK(text) ? F.cjk : F.lat;
     const track = r.range(0, 0.26);
     const cap = fitFontSize(text, w, track, sFont);             // 上限：正好撑满栏宽
     const fs = Math.max(10, Math.min(cap, cap * (P.type.subRelSize / 100) * 3.4));
@@ -343,7 +363,8 @@ function compose(P, seed, userImages = []) {
   /* --- 散文诗 --- */
   for (let i = 0; i < P.type.proseCount; i++) {
     const hostB = r.pick(subBoxes);
-    const block = r.pick(COPY.prose);
+    const C3 = P.copy || {};
+    const block = pickCopy(C3.prose, COPY.prose, r, usedText);
     const block0 = block.split('\n');
     let w = hostB.w * r.range(0.28, 0.5);
     let fs = 10 + (P.type.proseSize / 100) * 26;
@@ -551,4 +572,4 @@ function handMask(r) {
   return `polygon(${pts.join(',')})`;
 }
 
-window.LotEngine = { Rng, compose, render, PALETTES, FONTS };
+window.LotEngine = { Rng, compose, render, PALETTES, FONTS, noiseURL, isCJK };

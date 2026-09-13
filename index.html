@@ -62,6 +62,38 @@
   .mini.on{background:var(--go);color:var(--goInk);border-color:var(--go)}
   select{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:4px}
   .acts{display:flex;gap:6px;flex-wrap:wrap}
+  #sizes{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+  #sizes .chip{display:flex;flex-direction:column;line-height:1.25;padding:5px 0}
+  #sizes .chip i{font-style:normal;font-size:9px;opacity:.62;margin-top:1px}
+
+  .copyIn{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    border-radius:5px;padding:6px 8px;font:12px/1.5 inherit;margin-bottom:6px}
+  .copyIn:focus{outline:none;border-color:var(--go)}
+  textarea.copyIn{resize:vertical;min-height:52px}
+
+  .fav{position:relative;background:transparent;border:1px solid var(--line);color:var(--txt);
+    border-radius:5px;padding:5px 20px 5px 8px;font-size:11px;cursor:pointer;
+    font-family:"SF Mono",Menlo,monospace}
+  .fav:hover{border-color:var(--go)}
+  .fav .x{position:absolute;right:5px;top:3px;opacity:.45;font-size:12px}
+  .fav .x:hover{opacity:1;color:#ff6b6b}
+  #favs{display:flex;flex-wrap:wrap;gap:5px}
+  .dimnote{font-size:10px;color:var(--dim)}
+
+  #sheet{position:fixed;inset:0;background:#000c;z-index:50;display:flex;
+    align-items:center;justify-content:center;padding:24px}
+  #sheet[hidden]{display:none}
+  .sheetBox{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px;max-width:1000px;width:100%;max-height:90vh;overflow-y:auto}
+  .sheetHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;
+    font-size:12px;color:var(--txt)}
+  #sheetGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .cell{background:none;border:1px solid var(--line);border-radius:4px;padding:0;
+    cursor:pointer;overflow:hidden;line-height:0}
+  .cell:hover{border-color:var(--go)}
+  .cell canvas{width:100%;height:auto;display:block}
+  .sheetMsg{grid-column:1/-1;color:var(--dim);font-size:12px;padding:30px;text-align:center}
+
   .hint{font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6}
 
   @media(max-width:860px){#app{flex-direction:column;height:auto;max-height:none;min-height:100dvh}#panel{width:100%;border-left:0;border-top:1px solid var(--line)}
@@ -87,6 +119,30 @@
         <button class="mini" id="reset">重置</button>
         <label class="mini">载入图片<input id="imgs" type="file" accept="image/*" multiple hidden></label>
       </div>
+    </div>
+
+    <div class="sect">
+      <h3>出图 <span id="exportNote"></span></h3>
+      <div class="acts" style="margin-bottom:8px">
+        <button class="mini" id="sheetBtn">连抽 12 张挑一张</button>
+        <button class="mini" id="favBtn">♥ 收藏这张</button>
+      </div>
+      <div class="acts">
+        <button class="mini" id="export1">导出 PNG</button>
+        <button class="mini" id="export2">导出 2倍高清</button>
+      </div>
+      <div class="row" style="margin-top:10px"><span>尺寸</span><span></span></div>
+      <div id="sizes"></div>
+      <div class="row" style="margin-top:10px"><span>收藏</span><span></span></div>
+      <div id="favs"></div>
+    </div>
+
+    <div class="sect">
+      <h3>自己的文案 <span>留空则随机 · 用 | 分隔多条</span></h3>
+      <input class="copyIn" id="copy-title" placeholder="大标题，例：留白 | VOID | 会排">
+      <input class="copyIn" id="copy-sub" placeholder="小标题">
+      <textarea class="copyIn" id="copy-prose" placeholder="正文 / 散文诗，换行就是换行"></textarea>
+      <button class="mini" id="copy-clear">清空，回到随机文案</button>
     </div>
 
     <div class="sect">
@@ -144,11 +200,21 @@
       <input type="range" id="proseCount" data-path="type.proseCount" min="0" max="4" step="1">
       <div class="row"><span>散文诗大小</span><span id="proseSize-out"></span></div>
       <input type="range" id="proseSize" data-path="type.proseSize" min="5" max="60" step="1">
-      <div class="hint">空格 = 抽一张 · ← → = 翻上一张/下一张<br>本页面仅作机制演示，字体版权归原权利人所有。</div>
+      <div class="hint">空格=抽一张 · ←→=翻页 · G=连抽 · F=收藏 · E=导出<br>本页面仅作机制演示，字体版权归原权利人所有。</div>
     </div>
   </aside>
 </div>
+<div id="sheet" hidden>
+  <div class="sheetBox">
+    <div class="sheetHead">
+      <span>点一张放大 · Esc 关闭</span>
+      <button class="mini" id="sheetClose">关闭</button>
+    </div>
+    <div id="sheetGrid"></div>
+  </div>
+</div>
 <script src="src/engine.js"></script>
+<script src="src/canvas.js"></script>
 <script src="src/ui.js"></script>
 </body>
 </html>

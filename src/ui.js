@@ -15,7 +15,18 @@ const DEFAULTS = () => ({
             bigTitleGroups: 1, subTitleGroups: 2, subRelSize: 27,
             align: 'random', proseCount: 2, proseSize: 25 },
   palette: null, font: null,
+  size: { w: 1080, h: 1440, name: '3:4' },
+  copy: { title: '', sub: '', prose: '' },
 });
+
+/* 常用出图尺寸 */
+const SIZES = [
+  { name: '3:4',  w: 1080, h: 1440, tip: '小红书' },
+  { name: '2:3',  w: 1080, h: 1620, tip: '海报' },
+  { name: '1:1',  w: 1080, h: 1080, tip: '方图' },
+  { name: 'A4',   w: 1240, h: 1754, tip: '打印 150dpi' },
+  { name: '9:16', w: 1080, h: 1920, tip: '手机' },
+];
 
 const BUILTIN = [
   { name: '新中式',   patch: { font: 'song',     palette: '牛皮纸', type: { align: 'center', subRelSize: 22 } } },
@@ -40,7 +51,16 @@ const state = {
   selected: new Set(),      // 多选预设：每次抽卡在选中的预设里随机取一个
   presets: [],              // 内置 + 用户保存
   images: [],
+  favs: [],                 // 收藏：存种子 + 当时的全部参数
 };
+
+function loadFavs() {
+  try { return JSON.parse(localStorage.getItem('lotgo.favs') || '[]'); }
+  catch (e) { return []; }
+}
+function saveFavs() {
+  try { localStorage.setItem('lotgo.favs', JSON.stringify(state.favs)); } catch (e) {}
+}
 
 const $ = s => document.querySelector(s);
 const board = $('#board');
@@ -87,9 +107,10 @@ function step(d) {
 
 function fitBoard() {
   const stage = $('#stage');
+  const SW = state.P.size.w, SH = state.P.size.h;
   // 容器高度算不出来时别给出负的缩放，否则画板会翻转并消失
-  const k = Math.max(0.05, Math.min((stage.clientWidth - 48) / 1080,
-                                    (stage.clientHeight - 48) / 1512));
+  const k = Math.max(0.05, Math.min((stage.clientWidth - 48) / SW,
+                                    (stage.clientHeight - 48) / SH));
   board.style.transform = `scale(${k})`;
 }
 
@@ -185,6 +206,133 @@ function syncPanel() {
   $('#tickType').checked = state.P.type.tickType;
 }
 
+/* ---------- 尺寸 ---------- */
+function buildSizes() {
+  const box = $('#sizes'); box.innerHTML = '';
+  SIZES.forEach(z => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (state.P.size.name === z.name ? ' on' : '');
+    b.innerHTML = z.name + '<i>' + z.tip + '</i>';
+    b.onclick = () => {
+      state.P.size = { w: z.w, h: z.h, name: z.name };
+      buildSizes(); draw(state.history[state.cursor]);
+    };
+    box.appendChild(b);
+  });
+}
+
+/* ---------- 自定义文案 ---------- */
+function bindCopy() {
+  ['title', 'sub', 'prose'].forEach(k => {
+    const el = $('#copy-' + k);
+    el.value = state.P.copy[k];
+    el.oninput = () => { state.P.copy[k] = el.value; draw(state.history[state.cursor]); };
+  });
+  $('#copy-clear').onclick = () => {
+    state.P.copy = { title: '', sub: '', prose: '' };
+    ['title', 'sub', 'prose'].forEach(k => { $('#copy-' + k).value = ''; });
+    draw(state.history[state.cursor]);
+  };
+}
+
+/* ---------- 导出 PNG ---------- */
+let downloads = null;
+if (window.claude && claude.use) {
+  claude.use('downloads').then(d => {
+    downloads = d;
+    if (!d) $('#exportNote').textContent = '这个环境不能直接存文件，导出会在新窗口打开图片，长按/右键保存';
+  }).catch(() => {});
+}
+
+async function exportPNG(scale) {
+  const btn = $('#export' + scale);
+  const old = btn.textContent;
+  btn.textContent = '生成中…'; btn.disabled = true;
+  try {
+    const seed = state.history[state.cursor];
+    const comp = E.compose(activeParams(seed), seed, state.images);
+    const cv = await window.LotCanvas.renderToCanvas(comp, activeParams(seed), scale);
+    const blob = await window.LotCanvas.canvasToBlob(cv);
+    const name = `lotgo-${state.P.size.name.replace(':', 'x')}-${seed}@${scale}x.png`;
+    if (downloads) {
+      await downloads.save({ filename: name, data: blob });
+    } else {
+      // 没有存文件能力时，开一张图让用户自己保存
+      const url = URL.createObjectURL(blob);
+      const w = window.open('', '_blank');
+      if (w) w.document.write(`<title>${name}</title><body style="margin:0;background:#111">
+        <img src="${url}" style="max-width:100%;display:block;margin:auto">`);
+      else $('#exportNote').textContent = '浏览器拦截了新窗口，请允许弹窗后重试';
+    }
+  } catch (err) {
+    if (!(err && err.code === 'declined')) $('#exportNote').textContent = '导出失败：' + (err.message || err.code || err);
+  } finally {
+    btn.textContent = old; btn.disabled = false;
+  }
+}
+
+/* 当前生效的参数（把混抽命中的预设算进去），导出和预览必须用同一份 */
+function activeParams(seed) {
+  let P = state.P;
+  if (state.selected.size) {
+    const names = [...state.selected];
+    const hit = names[Math.floor(new E.Rng(seed).next() * names.length)];
+    const ps = state.presets.find(p => p.name === hit);
+    if (ps) P = merge(P, ps.patch);
+  }
+  return P;
+}
+
+/* ---------- 连抽 12 张，自己挑 ---------- */
+async function drawSheet() {
+  const sheet = $('#sheet'), grid = $('#sheetGrid');
+  sheet.hidden = false;
+  grid.innerHTML = '<div class="sheetMsg">生成中…</div>';
+  const seeds = Array.from({ length: 12 }, () => (Math.random() * 4294967295) >>> 0);
+  grid.innerHTML = '';
+  for (const sd of seeds) {
+    const P = activeParams(sd);
+    const comp = E.compose(P, sd, state.images);
+    const cv = await window.LotCanvas.renderToCanvas(comp, P, 220 / state.P.size.w);
+    const cell = document.createElement('button');
+    cell.className = 'cell';
+    cell.appendChild(cv);
+    cell.onclick = () => {
+      state.history = state.history.slice(0, state.cursor + 1);
+      state.history.push(sd);
+      state.cursor = state.history.length - 1;
+      sheet.hidden = true;
+      draw(sd);
+    };
+    grid.appendChild(cell);
+  }
+}
+
+/* ---------- 收藏 ---------- */
+function buildFavs() {
+  const box = $('#favs');
+  box.innerHTML = '';
+  if (!state.favs.length) { box.innerHTML = '<span class="dimnote">还没有收藏。抽到好的点 ♥</span>'; return; }
+  state.favs.forEach((f, i) => {
+    const b = document.createElement('button');
+    b.className = 'fav';
+    b.textContent = f.label;
+    b.title = '点击恢复这张（含当时的全部参数）';
+    b.onclick = () => {
+      state.P = merge(DEFAULTS(), f.P);
+      state.selected.clear();
+      syncPanel(); buildSizes(); buildPresets(); bindCopy();
+      state.history.push(f.seed); state.cursor = state.history.length - 1;
+      draw(f.seed);
+    };
+    const x = document.createElement('span');
+    x.className = 'x'; x.textContent = '×';
+    x.onclick = ev => { ev.stopPropagation(); state.favs.splice(i, 1); saveFavs(); buildFavs(); };
+    b.appendChild(x);
+    box.appendChild(b);
+  });
+}
+
 /* ---------- 启动 ---------- */
 function init() {
   buildPresets();
@@ -226,6 +374,28 @@ function init() {
     buildPresets();
   };
 
+  buildSizes(); bindCopy();
+  state.favs = loadFavs(); buildFavs();
+
+  $('#export1').onclick = () => exportPNG(1);
+  $('#export2').onclick = () => exportPNG(2);
+  $('#sheetBtn').onclick = () => drawSheet();
+  $('#sheetClose').onclick = () => { $('#sheet').hidden = true; };
+  $('#sheet').onclick = ev => { if (ev.target.id === 'sheet') $('#sheet').hidden = true; };
+
+  $('#favBtn').onclick = () => {
+    const seed = state.history[state.cursor];
+    if (seed === undefined) return;
+    if (state.favs.some(f => f.seed === seed)) return;
+    state.favs.unshift({
+      seed,
+      label: state.P.size.name + ' · ' + String(seed).slice(0, 6),
+      P: structuredClone(state.P),
+    });
+    state.favs = state.favs.slice(0, 40);
+    saveFavs(); buildFavs();
+  };
+
   $('#imgs').onchange = e => {
     state.images = [...e.target.files].map(f => URL.createObjectURL(f));
     draw(state.history[state.cursor]);
@@ -236,6 +406,10 @@ function init() {
     if (e.code === 'Space') { e.preventDefault(); draw(); }
     if (e.code === 'ArrowLeft') step(-1);
     if (e.code === 'ArrowRight') step(1);
+    if (e.code === 'Escape') $('#sheet').hidden = true;
+    if (e.key === 'e') exportPNG(2);
+    if (e.key === 'f') $('#favBtn').click();
+    if (e.key === 'g') drawSheet();
   });
 
   window.addEventListener('resize', fitBoard);
