@@ -109,6 +109,13 @@
   .fold>summary:hover{border-color:#5a5f66}
 
   .mini.wide{flex:1}
+  .lockRow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .lockRow>span{font-size:10px;color:var(--dim);flex:none}
+  #locks{display:flex;gap:4px;flex:1}
+  .lock{flex:1;background:transparent;border:1px dashed var(--line);color:var(--dim);
+    border-radius:5px;padding:5px 0;font-size:11px;cursor:pointer}
+  .lock:hover{border-color:#5a5f66;color:var(--txt)}
+  .lock.on{background:var(--go);color:var(--goInk);border-style:solid;border-color:var(--go)}
   .note{font-size:10px;color:var(--dim);margin-top:8px}
   #favs:empty{display:none}
   #favs{margin-top:8px}
@@ -140,6 +147,7 @@
         <label class="mini">载图<input id="imgs" type="file" accept="image/*" multiple hidden></label>
       </div>
       <div id="sizes"></div>
+      <div class="lockRow"><span>锁住不变</span><div id="locks"></div></div>
       <div id="favs"></div>
       <div class="note" id="exportNote"></div>
     </div>

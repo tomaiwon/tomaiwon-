@@ -237,11 +237,14 @@ function compose(P, seed, userImages = []) {
   const m = Math.round(base * (exp ? r.range(0.55, 1.25) : 1) * (2 - P.grid.strength));
   const frame = { x: m, y: m, w: W - 2 * m, h: H - 2 * m };
 
-  const archKey = r.pick(Object.keys(ARCHETYPES));
+  // 锁定了就沿用上一张的版式，否则重抽
+  const archKey = (P.lockArch && ARCHETYPES[P.lockArch]) ? P.lockArch
+                : r.pick(Object.keys(ARCHETYPES));
   const box = ARCHETYPES[archKey](frame, r);
 
   const els = [];
   const usedText = new Set();   // 同一张图内的文案去重
+  const usedCopy = { title: [], sub: [], prose: [] };   // 这张实际用了什么，锁定时复用
   const taken = [];          // 已占据的版面区域
   const push = (layer, el) => { if (P.layers[layer] !== false) els.push({ layer, ...el }); };
 
@@ -308,8 +311,10 @@ function compose(P, seed, userImages = []) {
   for (let g = 0; g < P.type.bigTitleGroups; g++) {
     const useCJK = r.chance(0.42);
     const C = P.copy || {};
-    const text = C.title ? pickCopy(C.title, COPY.latTitle, r, usedText)
-               : pickCopy(null, useCJK ? COPY.cjkTitle : COPY.latTitle, r, usedText);
+    const lockT = P.lockCopy && P.lockCopy.title[g];
+    const text = lockT || (C.title ? pickCopy(C.title, COPY.latTitle, r, usedText)
+               : pickCopy(null, useCJK ? COPY.cjkTitle : COPY.latTitle, r, usedText));
+    usedCopy.title.push(text);
     const cjkText = isCJK(text);
     const tFont = cjkText ? F.cjk : F.lat;
     const tWeight = cjkText ? 400 : r.pick([300, 400, 700]);
@@ -342,8 +347,10 @@ function compose(P, seed, userImages = []) {
     const hostB = subBoxes[g % subBoxes.length];
     const useCJK = r.chance(0.5);
     const C2 = P.copy || {};
-    const text = C2.sub ? pickCopy(C2.sub, COPY.latSub, r, usedText)
-               : pickCopy(null, useCJK ? COPY.cjkSub : COPY.latSub, r, usedText);
+    const lockS = P.lockCopy && P.lockCopy.sub[g];
+    const text = lockS || (C2.sub ? pickCopy(C2.sub, COPY.latSub, r, usedText)
+               : pickCopy(null, useCJK ? COPY.cjkSub : COPY.latSub, r, usedText));
+    usedCopy.sub.push(text);
     const w = hostB.w * r.range(0.35, 0.8);
     const sFont = isCJK(text) ? F.cjk : F.lat;
     const track = r.range(0, 0.26);
@@ -364,7 +371,8 @@ function compose(P, seed, userImages = []) {
   for (let i = 0; i < P.type.proseCount; i++) {
     const hostB = r.pick(subBoxes);
     const C3 = P.copy || {};
-    const block = pickCopy(C3.prose, COPY.prose, r, usedText);
+    const block = (P.lockCopy && P.lockCopy.prose[i]) || pickCopy(C3.prose, COPY.prose, r, usedText);
+    usedCopy.prose.push(block);
     const block0 = block.split('\n');
     let w = hostB.w * r.range(0.28, 0.5);
     let fs = 10 + (P.type.proseSize / 100) * 26;
@@ -437,7 +445,7 @@ function compose(P, seed, userImages = []) {
   /* --- 杂色噪点 --- */
   if (P.layers.noise) push('noise', { k: 'noise', freq: r.range(0.6, 1.4), op: r.range(0.04, 0.12) });
 
-  return { W, H, els, pal, fontKey, archKey, seed, align, margin: m };
+  return { W, H, els, pal, fontKey, archKey, seed, align, margin: m, usedCopy };
 }
 
 /* ---------- 7. 渲染 ---------- */

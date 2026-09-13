@@ -52,7 +52,11 @@ const state = {
   presets: [],              // 内置 + 用户保存
   images: [],
   favs: [],                 // 收藏：存种子 + 当时的全部参数
+  locks: { pal: false, font: false, arch: false, copy: false },  // 锁住的不重抽
+  last: null,               // 上一张实际用了什么，锁定时复用
 };
+
+const LOCK_LABELS = { pal: '配色', font: '字体', arch: '版式', copy: '文案' };
 
 function loadFavs() {
   try { return JSON.parse(localStorage.getItem('lotgo.favs') || '[]'); }
@@ -84,15 +88,10 @@ function draw(seed) {
     state.history.push(seed);
     state.cursor = state.history.length - 1;
   }
-  let P = state.P;
-  if (state.selected.size) {
-    const names = [...state.selected];
-    const pick = names[Math.floor(new E.Rng(seed).next() * names.length)];
-    const ps = state.presets.find(p => p.name === pick);
-    if (ps) P = merge(P, ps.patch);
-  }
+  const P = activeParams(seed);
   const comp = E.compose(P, seed, state.images);
   E.render(board, comp, P);
+  state.last = { pal: comp.pal.name, font: comp.fontKey, arch: comp.archKey, copy: comp.usedCopy };
   $('#meta').textContent =
     `在结构中发现偶然 · LotGo-like · #${String(seed).padStart(10, '0')} · ${comp.archKey} / ${comp.pal.name} / ${comp.fontKey}`;
   fitBoard();
@@ -281,6 +280,14 @@ function activeParams(seed) {
     const ps = state.presets.find(p => p.name === hit);
     if (ps) P = merge(P, ps.patch);
   }
+  // 锁定：沿用上一张的对应部分，其余照常重抽
+  const L = state.locks, last = state.last;
+  if (last) {
+    if (L.pal)  P = merge(P, { palette: last.pal });
+    if (L.font) P = merge(P, { font: last.font });
+    if (L.arch) P = merge(P, { lockArch: last.arch });
+    if (L.copy) P = merge(P, { lockCopy: last.copy });
+  }
   return P;
 }
 
@@ -306,6 +313,20 @@ async function drawSheet() {
       draw(sd);
     };
     grid.appendChild(cell);
+  }
+}
+
+/* ---------- 锁定：抽卡机的核心手感 ----------
+   锁住喜欢的那部分，只重抽其余。比给一墙滑杆有用得多。 */
+function buildLocks() {
+  const box = $('#locks'); box.innerHTML = '';
+  for (const k in LOCK_LABELS) {
+    const b = document.createElement('button');
+    b.className = 'lock' + (state.locks[k] ? ' on' : '');
+    b.textContent = (state.locks[k] ? '🔒' : '') + LOCK_LABELS[k];
+    b.title = state.locks[k] ? '已锁定，抽卡时不变' : '点击锁定，之后抽卡保持不变';
+    b.onclick = () => { state.locks[k] = !state.locks[k]; buildLocks(); };
+    box.appendChild(b);
   }
 }
 
@@ -375,7 +396,7 @@ function init() {
     buildPresets();
   };
 
-  buildSizes(); bindCopy();
+  buildSizes(); bindCopy(); buildLocks();
   state.favs = loadFavs(); buildFavs();
 
   $('#export1').onclick = () => exportPNG(1);
