@@ -32,7 +32,7 @@
   .preset:hover{border-color:#5a5f66}
   .preset.on{background:var(--go);color:var(--goInk);border-color:var(--go)}
 
-  .banner{margin:10px 0 4px;background:var(--go);color:var(--goInk);border-radius:6px;
+  .banner{margin:0 0 8px;background:var(--go);color:var(--goInk);border-radius:6px;
     text-align:center;font:700 34px/1.3 Helvetica,Arial,sans-serif;letter-spacing:-1px;cursor:pointer;user-select:none}
   .banner:active{transform:translateY(1px)}
   .metaRow{display:flex;gap:6px;align-items:center;margin-bottom:10px}
@@ -61,7 +61,7 @@
     padding:5px 9px;font-size:11px;cursor:pointer}
   .mini.on{background:var(--go);color:var(--goInk);border-color:var(--go)}
   select{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:4px}
-  .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
   #sizes{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
   #sizes .chip{display:flex;flex-direction:column;line-height:1.25;padding:5px 0}
   #sizes .chip i{font-style:normal;font-size:9px;opacity:.62;margin-top:1px}
@@ -94,6 +94,25 @@
   .cell canvas{width:100%;height:auto;display:block}
   .sheetMsg{grid-column:1/-1;color:var(--dim);font-size:12px;padding:30px;text-align:center}
 
+  .fold{margin-bottom:10px}
+  .fold>summary{
+    list-style:none;cursor:pointer;user-select:none;
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;font-size:12px;font-weight:600;color:var(--txt);
+    display:flex;justify-content:space-between;align-items:center
+  }
+  .fold>summary::-webkit-details-marker{display:none}
+  .fold>summary span{font-weight:400;font-size:10px;color:var(--dim)}
+  .fold>summary::after{content:"▾";color:var(--dim);margin-left:8px}
+  .fold[open]>summary{margin-bottom:10px}
+  .fold[open]>summary::after{content:"▴"}
+  .fold>summary:hover{border-color:#5a5f66}
+
+  .mini.wide{flex:1}
+  .note{font-size:10px;color:var(--dim);margin-top:8px}
+  #favs:empty{display:none}
+  #favs{margin-top:8px}
+
   .hint{font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6}
 
   @media(max-width:860px){#app{flex-direction:column;height:auto;max-height:none;min-height:100dvh}#panel{width:100%;border-left:0;border-top:1px solid var(--line)}
@@ -105,9 +124,8 @@
   <main id="stage"><div id="board"></div></main>
 
   <aside id="panel">
+    <!-- 常开区：抽 / 挑 / 导出 -->
     <div class="sect">
-      <h3>风格预设 <span>单击套用 · Shift 多选混抽</span></h3>
-      <div id="presets"></div>
       <div class="banner" id="go">LotGO</div>
       <div class="metaRow">
         <div id="meta"></div>
@@ -115,93 +133,101 @@
         <button class="nav" id="next">→</button>
       </div>
       <div class="acts">
-        <button class="mini" id="save">保存为预设</button>
-        <button class="mini" id="reset">重置</button>
-        <label class="mini">载入图片<input id="imgs" type="file" accept="image/*" multiple hidden></label>
+        <button class="mini wide" id="sheetBtn">连抽 12 张</button>
+        <button class="mini" id="favBtn">♥</button>
+        <button class="mini" id="export1">导出</button>
+        <button class="mini" id="export2">2倍</button>
+        <label class="mini">载图<input id="imgs" type="file" accept="image/*" multiple hidden></label>
       </div>
-    </div>
-
-    <div class="sect">
-      <h3>出图 <span id="exportNote"></span></h3>
-      <div class="acts" style="margin-bottom:8px">
-        <button class="mini" id="sheetBtn">连抽 12 张挑一张</button>
-        <button class="mini" id="favBtn">♥ 收藏这张</button>
-      </div>
-      <div class="acts">
-        <button class="mini" id="export1">导出 PNG</button>
-        <button class="mini" id="export2">导出 2倍高清</button>
-      </div>
-      <div class="row" style="margin-top:10px"><span>尺寸</span><span></span></div>
       <div id="sizes"></div>
-      <div class="row" style="margin-top:10px"><span>收藏</span><span></span></div>
       <div id="favs"></div>
+      <div class="note" id="exportNote"></div>
     </div>
 
+    <!-- 常开区：文案 -->
     <div class="sect">
-      <h3>自己的文案 <span>留空则随机 · 用 | 分隔多条</span></h3>
-      <input class="copyIn" id="copy-title" placeholder="大标题，例：留白 | VOID | 会排">
+      <h3>文案 <span>留空=随机 · | 分隔多条</span></h3>
+      <input class="copyIn" id="copy-title" placeholder="大标题　例：留白 | VOID">
       <input class="copyIn" id="copy-sub" placeholder="小标题">
-      <textarea class="copyIn" id="copy-prose" placeholder="正文 / 散文诗，换行就是换行"></textarea>
-      <button class="mini" id="copy-clear">清空，回到随机文案</button>
+      <textarea class="copyIn" id="copy-prose" placeholder="正文"></textarea>
+      <button class="mini" id="copy-clear">清空</button>
     </div>
 
+    <!-- 常开区：风格 -->
     <div class="sect">
-      <h3>图层</h3>
-      <div id="layers"></div>
-      <div id="modes"></div>
+      <h3>风格 <span>Shift 多选混抽</span></h3>
+      <div id="presets"></div>
     </div>
 
-    <div class="sect">
-      <h3>画面调色 <label class="cb"><input type="checkbox" id="colorOn" checked><span>生效</span></label></h3>
-      <div class="row"><span>对比度</span><span id="contrast-out"></span></div>
-      <input type="range" id="contrast" data-path="color.contrast" min="50" max="200" step="1">
-      <div class="row"><span>饱和</span><span id="saturate-out"></span></div>
-      <input type="range" id="saturate" data-path="color.saturate" min="0" max="200" step="1">
-      <div class="row"><span>明暗</span><span id="brightness-out"></span></div>
-      <input type="range" id="brightness" data-path="color.brightness" min="50" max="160" step="1">
-      <div class="row"><span>纹理</span><span id="texStrength-out"></span></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select id="texSel"><option>W-0</option><option>W-1</option><option>W-2</option></select>
-        <input type="range" id="texStrength" data-path="color.textureStrength" min="0" max="100" step="1">
-      </div>
-    </div>
+    <!-- 折叠区：细调 -->
+    <details class="fold">
+      <summary>细调<span>图层 · 调色 · 网格 · 标题组</span></summary>
 
-    <div class="sect">
-      <h3>网格与结构 <span id="gridStrength-out"></span></h3>
-      <input type="range" id="gridStrength" data-path="grid.strength" min="0.4" max="1.6" step="0.05">
-      <div class="seg" id="gridMode">
-        <button data-v="ortho">正交</button>
-        <button data-v="skew">非正交</button>
-        <button data-v="curve">数学曲线</button>
+      <div class="sect">
+        <h3>图层</h3>
+        <div id="layers"></div>
+        <div id="modes"></div>
       </div>
-    </div>
 
-    <div class="sect">
-      <h3>标题组 <span>合计 <b id="bigGroups-out"></b>+<b id="subGroups-out"></b> 组</span></h3>
-      <div class="row"><span>标题整体大小</span><span id="titleScale-out"></span></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="range" id="titleScale" data-path="type.titleScale" min="-40" max="60" step="1">
-        <button class="mini" id="lockSize">固化大小</button>
+      <div class="sect">
+        <h3>画面调色 <label class="cb"><input type="checkbox" id="colorOn" checked><span>生效</span></label></h3>
+        <div class="row"><span>对比度</span><span id="contrast-out"></span></div>
+        <input type="range" id="contrast" data-path="color.contrast" min="50" max="200" step="1">
+        <div class="row"><span>饱和</span><span id="saturate-out"></span></div>
+        <input type="range" id="saturate" data-path="color.saturate" min="0" max="200" step="1">
+        <div class="row"><span>明暗</span><span id="brightness-out"></span></div>
+        <input type="range" id="brightness" data-path="color.brightness" min="50" max="160" step="1">
+        <div class="row"><span>纹理</span><span id="texStrength-out"></span></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="texSel"><option>W-0</option><option>W-1</option><option>W-2</option></select>
+          <input type="range" id="texStrength" data-path="color.textureStrength" min="0" max="100" step="1">
+        </div>
       </div>
-      <label class="cb" style="margin-top:8px"><input type="checkbox" id="tickType" checked><span>刻度字</span></label>
-      <div class="row"><span>大标题组数量</span><span></span></div>
-      <input type="range" id="bigGroups" data-path="type.bigTitleGroups" min="1" max="3" step="1">
-      <div class="row"><span>小标题组数量</span><span></span></div>
-      <input type="range" id="subGroups" data-path="type.subTitleGroups" min="0" max="6" step="1">
-      <div class="row"><span>小标题相对大小</span><span id="subRel-out"></span></div>
-      <input type="range" id="subRel" data-path="type.subRelSize" min="10" max="80" step="1">
-      <div class="seg" id="align">
-        <button data-v="left">左右</button>
-        <button data-v="center">居中</button>
-        <button data-v="array">阵列</button>
-        <button data-v="random">随机</button>
+
+      <div class="sect">
+        <h3>网格与结构 <span id="gridStrength-out"></span></h3>
+        <input type="range" id="gridStrength" data-path="grid.strength" min="0.4" max="1.6" step="0.05">
+        <div class="seg" id="gridMode">
+          <button data-v="ortho">正交</button>
+          <button data-v="skew">非正交</button>
+          <button data-v="curve">数学曲线</button>
+        </div>
       </div>
-      <div class="row"><span>散文诗数量</span><span id="proseCount-out"></span></div>
-      <input type="range" id="proseCount" data-path="type.proseCount" min="0" max="4" step="1">
-      <div class="row"><span>散文诗大小</span><span id="proseSize-out"></span></div>
-      <input type="range" id="proseSize" data-path="type.proseSize" min="5" max="60" step="1">
-      <div class="hint">空格=抽一张 · ←→=翻页 · G=连抽 · F=收藏 · E=导出<br>本页面仅作机制演示，字体版权归原权利人所有。</div>
-    </div>
+
+      <div class="sect">
+        <h3>标题组 <span>合计 <b id="bigGroups-out"></b>+<b id="subGroups-out"></b> 组</span></h3>
+        <div class="row"><span>标题整体大小</span><span id="titleScale-out"></span></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="range" id="titleScale" data-path="type.titleScale" min="-40" max="60" step="1">
+          <button class="mini" id="lockSize">固化</button>
+        </div>
+        <label class="cb" style="margin-top:8px"><input type="checkbox" id="tickType" checked><span>刻度字</span></label>
+        <div class="row"><span>大标题组</span><span></span></div>
+        <input type="range" id="bigGroups" data-path="type.bigTitleGroups" min="1" max="3" step="1">
+        <div class="row"><span>小标题组</span><span></span></div>
+        <input type="range" id="subGroups" data-path="type.subTitleGroups" min="0" max="6" step="1">
+        <div class="row"><span>小标题相对大小</span><span id="subRel-out"></span></div>
+        <input type="range" id="subRel" data-path="type.subRelSize" min="10" max="80" step="1">
+        <div class="seg" id="align">
+          <button data-v="left">左右</button>
+          <button data-v="center">居中</button>
+          <button data-v="array">阵列</button>
+          <button data-v="random">随机</button>
+        </div>
+        <div class="row"><span>散文诗数量</span><span id="proseCount-out"></span></div>
+        <input type="range" id="proseCount" data-path="type.proseCount" min="0" max="4" step="1">
+        <div class="row"><span>散文诗大小</span><span id="proseSize-out"></span></div>
+        <input type="range" id="proseSize" data-path="type.proseSize" min="5" max="60" step="1">
+      </div>
+
+      <div class="sect">
+        <div class="acts">
+          <button class="mini" id="save">把当前参数存成风格</button>
+          <button class="mini" id="reset">全部重置</button>
+        </div>
+        <div class="hint">空格=抽 · ←→=翻页 · G=连抽 · F=收藏 · E=导出<br>仅作机制演示，字体版权归原权利人所有。</div>
+      </div>
+    </details>
   </aside>
 </div>
 <div id="sheet" hidden>

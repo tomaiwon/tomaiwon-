@@ -7,8 +7,8 @@ const E = window.LotEngine;   // 两个文件共用全局作用域，这里不�
 const DEFAULTS = () => ({
   layers: { bg: true, zone: false, line: true, noise: false, image: true, texture: true,
             text: true, deco: false, shape: true, slit: false, sidebar: false, band: false },
-  modes:  { experimental: true, card: false, clash: false, randomCut: false,
-            rawImage: false, aiLayer: false, handMask: false, bandMask: true },
+  modes:  { experimental: true, clash: false, randomCut: false,
+            rawImage: false, handMask: false, bandMask: true },
   color:  { enabled: true, contrast: 100, saturate: 100, brightness: 100, texture: 'W-0', textureStrength: 49 },
   grid:   { strength: 1.0, mode: 'ortho' },
   type:   { titleScale: 0, microScale: 0, lockSize: false, tickType: true,
@@ -117,8 +117,9 @@ function fitBoard() {
 /* ---------- 面板构建 ---------- */
 const LAYER_LABELS = { bg: '底色', zone: '分区', line: '线条', noise: '杂', image: '图片', texture: '纹理',
                        text: '文本', deco: '装饰', shape: '图形', slit: '窄缝', sidebar: '边栏', band: '通栏' };
-const MODE_LABELS  = { experimental: '实验模式', card: '卡片模式', clash: '撞色分区', randomCut: '随机切割',
-                       rawImage: '原图模式', aiLayer: 'AI分层', handMask: '手写蒙版', bandMask: '通栏蒙版' };
+// 只列引擎真正会读的模式。卡片模式/AI分层在引擎里是 0 次调用，是假控件，已删。
+const MODE_LABELS  = { experimental: '实验模式', clash: '撞色分区', randomCut: '随机切割',
+                       rawImage: '原图模式', handMask: '手写蒙版', bandMask: '通栏蒙版' };
 
 function loadUserPresets() {
   try { return JSON.parse(localStorage.getItem('lotgo.presets') || '[]'); }
