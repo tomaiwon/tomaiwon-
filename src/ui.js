@@ -97,8 +97,13 @@ const LAYER_LABELS = { bg: '底色', zone: '分区', line: '线条', noise: '杂
 const MODE_LABELS  = { experimental: '实验模式', card: '卡片模式', clash: '撞色分区', randomCut: '随机切割',
                        rawImage: '原图模式', aiLayer: 'AI分层', handMask: '手写蒙版', bandMask: '通栏蒙版' };
 
+function loadUserPresets() {
+  try { return JSON.parse(localStorage.getItem('lotgo.presets') || '[]'); }
+  catch (e) { return []; }          // 隐私模式 / 禁用存储时直接退回内置预设
+}
+
 function buildPresets() {
-  state.presets = [...BUILTIN, ...JSON.parse(localStorage.getItem('lotgo.presets') || '[]')];
+  state.presets = [...BUILTIN, ...loadUserPresets()];
   const box = $('#presets');
   box.innerHTML = '';
   state.presets.forEach(p => {
@@ -210,11 +215,12 @@ function init() {
 
   /* 保存预设：把当前面板状态整包存进 localStorage，名字就叫「风格N」 */
   $('#save').onclick = () => {
-    const user = JSON.parse(localStorage.getItem('lotgo.presets') || '[]');
+    const user = loadUserPresets();
     const name = prompt('预设名', '风格' + (user.length + 1));
     if (!name) return;
     user.push({ name, patch: structuredClone(state.P) });
-    localStorage.setItem('lotgo.presets', JSON.stringify(user));
+    try { localStorage.setItem('lotgo.presets', JSON.stringify(user)); }
+    catch (e) { alert('这个环境不允许本地存储，预设只在本次有效'); }
     buildPresets();
   };
 
