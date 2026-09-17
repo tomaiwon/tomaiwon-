@@ -1,4 +1,4 @@
-# 版式抽卡机（LotGo 机制复刻）
+# 抽屉视觉
 
 对小红书上 LotGo v1.10「版式抽卡机」的机制拆解 + 一个能跑的最小复刻。
 零依赖，直接用浏览器打开 `index.html` 即可。
@@ -36,6 +36,15 @@ open index.html          # 或者 python3 -m http.server 后访问
 
 原来照着截图抄过来的「卡片模式」和「AI分层」已删——引擎里 0 次调用，点了不会有任何变化。
 
+## 部署
+
+```
+node build.js        # 生成 dist/index.html
+```
+
+`dist/index.html` 是**单文件、零外部依赖**（62 KB），三个 js 全部内联。
+上传到任何静态服务器的任意目录即可，不需要构建环境、不需要服务端。
+
 ## 文件
 
 | 文件 | 作用 |
@@ -44,6 +53,7 @@ open index.html          # 或者 python3 -m http.server 后访问
 | `src/engine.js` | 引擎：种子随机、版式母题、字号反解、避让、DOM 渲染 |
 | `src/canvas.js` | canvas 渲染器，用于任意倍率导出（跟 DOM 版画同一份元素列表）|
 | `src/ui.js` | 面板绑定、抽卡历史、预设存取 |
+| `build.js` | 打包成 `dist/index.html` 单文件 |
 
 ## 声明
 

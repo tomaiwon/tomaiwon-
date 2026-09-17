@@ -93,7 +93,7 @@ function draw(seed) {
   E.render(board, comp, P);
   state.last = { pal: comp.pal.name, font: comp.fontKey, arch: comp.archKey, copy: comp.usedCopy };
   $('#meta').textContent =
-    `在结构中发现偶然 · LotGo-like · #${String(seed).padStart(10, '0')} · ${comp.archKey} / ${comp.pal.name} / ${comp.fontKey}`;
+    `抽屉视觉 · #${String(seed).padStart(10, '0')} · ${comp.archKey} / ${comp.pal.name} / ${comp.fontKey}`;
   fitBoard();
 }
 
@@ -253,7 +253,7 @@ async function exportPNG(scale) {
     const comp = E.compose(activeParams(seed), seed, state.images);
     const cv = await window.LotCanvas.renderToCanvas(comp, activeParams(seed), scale);
     const blob = await window.LotCanvas.canvasToBlob(cv);
-    const name = `lotgo-${state.P.size.name.replace(':', 'x')}-${seed}@${scale}x.png`;
+    const name = `chouti-${state.P.size.name.replace(':', 'x')}-${seed}@${scale}x.png`;
     if (downloads) {
       await downloads.save({ filename: name, data: blob });
     } else {

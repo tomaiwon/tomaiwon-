@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>版式抽卡机 · LotGo 机制复刻</title>
+<title>抽屉视觉</title>
 <style>
   :root{
     --panel:#1b1c1e; --panel2:#232528; --line:#33363a;
@@ -33,7 +33,7 @@
   .preset.on{background:var(--go);color:var(--goInk);border-color:var(--go)}
 
   .banner{margin:0 0 8px;background:var(--go);color:var(--goInk);border-radius:6px;
-    text-align:center;font:700 34px/1.3 Helvetica,Arial,sans-serif;letter-spacing:-1px;cursor:pointer;user-select:none}
+    text-align:center;font:700 30px/1.35 -apple-system,"PingFang SC",system-ui,sans-serif;letter-spacing:4px;cursor:pointer;user-select:none}
   .banner:active{transform:translateY(1px)}
   .metaRow{display:flex;gap:6px;align-items:center;margin-bottom:10px}
   #meta{flex:1;font-size:10px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -133,7 +133,7 @@
   <aside id="panel">
     <!-- 常开区：抽 / 挑 / 导出 -->
     <div class="sect">
-      <div class="banner" id="go">LotGO</div>
+      <div class="banner" id="go">抽屉视觉</div>
       <div class="metaRow">
         <div id="meta"></div>
         <button class="nav" id="prev">←</button>
