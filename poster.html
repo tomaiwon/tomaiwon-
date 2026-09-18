@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>野排海报</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#8e8e8a;overflow:hidden;
+    font:13px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+
+  /* 舞台：把 3:4 的海报等比放进视口 */
+  #stage{position:fixed;inset:0;display:grid;place-items:center}
+  #poster{position:relative;background:#fff;overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,.28);transform-origin:center}
+
+  /* ---- 排版块 ---- */
+  .blk{position:absolute;cursor:move;color:#111;
+    font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,"PingFang SC",sans-serif}
+  .blk .ln{position:absolute;white-space:pre;transform-origin:0 0}
+  .blk.sel{outline:1px dashed #6a6ae8;outline-offset:6px}
+  .blk .grip{position:absolute;right:-5px;bottom:-5px;width:11px;height:11px;
+    background:#6a6ae8;cursor:nwse-resize;opacity:0;transition:opacity .12s}
+  .blk.sel .grip{opacity:1}
+
+  /* ---- 海报家具 ---- */
+  /* 大标题要的是"重而窄"。Impact / Haettenschweiler 只在部分系统上有，
+     所以不指望字体本身——统一用 scaleX 压扁，任何平台上长得都一样。 */
+  .head{position:absolute;color:#111;font-weight:900;letter-spacing:-.012em;
+    font-family:"Haettenschweiler",Impact,"Arial Narrow","Helvetica Neue",Arial,sans-serif;
+    text-transform:uppercase;pointer-events:none}
+  .head span{display:block;transform-origin:0 50%;white-space:pre}
+  .shot{position:absolute;object-fit:cover;pointer-events:none}
+  .cap{position:absolute;font-weight:700;pointer-events:none;color:#111;
+    font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif}
+  .foot{position:absolute;left:0;bottom:0;display:flex;align-items:center;gap:7px;
+    font:500 11px/1 -apple-system,Helvetica,Arial,sans-serif;color:#111;pointer-events:none}
+  .kw{position:absolute;font-weight:700;line-height:1.3;color:#111;pointer-events:none;
+    font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif}
+  #ink{position:absolute;inset:0;pointer-events:none}
+  .rosette{position:absolute;pointer-events:none}
+
+  /* ---- 角落说明，不参与导出 ---- */
+  #hud{position:fixed;left:14px;bottom:12px;color:#fff;opacity:.62;
+    font-size:10px;letter-spacing:.06em;line-height:1.85;pointer-events:none;
+    text-shadow:0 1px 3px rgba(0,0,0,.45)}
+  #hud b{display:inline-block;min-width:74px;font-weight:400;opacity:.65}
+  #tag{position:fixed;right:14px;bottom:12px;color:#fff;opacity:.5;font-size:10px;
+    letter-spacing:.1em;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.45)}
+  @media (max-width:640px){#hud{display:none}}
+</style>
+</head>
+<body>
+
+<div id="stage"><div id="poster">
+  <svg id="ink"></svg>
+</div></div>
+
+<div id="hud">
+  <div><b>拖动</b>移动文字块</div>
+  <div><b>右下角</b>拉伸 → 宽度决定字号</div>
+  <div><b>单击</b>换一个形状</div>
+  <div><b>空格</b>整页重排 · <b>C</b> 清掉墨迹</div>
+</div>
+<div id="tag">野排海报 / Shape-flow Poster</div>
+
+<script>
+/* =====================================================================
+ * 野排海报 —— 「形状排版」机制复刻
+ *
+ * 看上去花哨，其实只有一件事：
+ *   普通排版里每行可用宽度是常数；这里它是 y 的函数。
+ *   段落于是长出一条有机的轮廓线 —— 透镜、波形、楔形、随机游走。
+ *
+ *   flow(文字, 形状函数) -> 行列表 -> 绝对定位的 DOM
+ *
+ * 宽度函数 shape(t) 返回该行的 [左, 右]，t 是行在块内的进度 0→1。
+ * 断行仍然是最朴素的贪心，只是每行问一次"我这行有多宽"。
+ * ===================================================================== */
+
+/* ---------- 1. 种子随机 ---------- */
+function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;
+  let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;
+  return ((t^(t>>>14))>>>0)/4294967296;};}
+class Rng{
+  constructor(s){this.seed=s>>>0;this._f=mulberry32(this.seed);}
+  next(){return this._f();}
+  range(a,b){return a+(b-a)*this.next();}
+  int(a,b){return Math.floor(this.range(a,b+1));}
+  pick(a){return a[Math.floor(this.next()*a.length)];}
+  chance(p){return this.next()<p;}
+}
+
+/* ---------- 2. 宽度包络：本文件的全部秘密 ----------
+ * 每个形状是 t ∈ [0,1] → [x0, x1]，单位是块宽的比例。
+ * 想加新版式，往这里塞一个函数就行，别的都不用动。 */
+const SHAPES = {
+  /* 透镜：中间胖两头尖。视频里最显眼的那个形状 */
+  透镜: (t) => { const k = 0.14 + 0.86 * Math.sin(Math.PI * t); return [(1-k)/2, (1+k)/2]; },
+  /* 楔形：从一根细线摊开成整块 */
+  楔形: (t) => [0, 0.16 + 0.84 * t],
+  /* 倒楔：反过来收口 */
+  倒楔: (t) => [0, 1 - 0.78 * t],
+  /* 波形：左边界荡秋千，宽度基本不变 */
+  波形: (t) => { const o = 0.16 * (1 + Math.sin(t * 7.5)); return [o, o + 0.62]; },
+  /* 沙漏：两头宽中间掐细 */
+  沙漏: (t) => { const k = 0.22 + 0.78 * Math.abs(Math.cos(Math.PI * t)); return [(1-k)/2, (1+k)/2]; },
+  /* 河道：平滑随机游走，最像手工排的 */
+  河道: (t, rng) => {
+    const a = 0.5 + 0.5 * Math.sin(t * 5.1 + rng.phase);
+    const b = 0.5 + 0.5 * Math.sin(t * 3.3 + rng.phase * 2.2);
+    const x0 = 0.30 * a, w = 0.40 + 0.46 * b;
+    return [x0, Math.min(1, x0 + w)];
+  },
+  /* 直栏：对照组，就是普通段落 */
+  直栏: () => [0, 1],
+};
+const SHAPE_KEYS = Object.keys(SHAPES);
+
+/* 高频抖动：让相邻两行的起止各差一点，段落边缘"撕"出毛边。
+   没有它，形状再花也只是一条平滑的曲边，一眼假。 */
+function jit(r, phase){
+  const s = Math.sin((r + 1) * 12.9898 + phase * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/* ---------- 3. 量字 ---------- */
+const meter = document.createElement('canvas').getContext('2d');
+function widthOf(text, font){ meter.font = font; return meter.measureText(text).width; }
+
+/* ---------- 4. 排版核心 ----------
+ * words   已切好的词
+ * opt.W/H 块的尺寸（px）
+ * opt.fs  字号   opt.lh 行高倍数
+ * opt.shape 形状函数   opt.align 行内对齐
+ * 返回 [{text,x,y,w}]，坐标相对块左上角。
+ */
+function flow(words, opt){
+  const font = `${opt.weight||400} ${opt.fs}px ${opt.family}`;
+  const lineH = opt.fs * opt.lh;
+  const rows = Math.max(1, Math.floor(opt.H / lineH));
+  const spaceW = widthOf(' ', font);
+  const out = [];
+  let i = 0;
+
+  for (let r = 0; r < rows && i < words.length; r++) {
+    const t = rows === 1 ? 0 : r / (rows - 1);
+    let [a, b] = opt.shape(t, opt.rng);
+    if (opt.jitter){
+      a += (jit(r, opt.rng.phase) - .5) * opt.jitter;
+      b += (jit(r, opt.rng.phase + 3.1) - .5) * opt.jitter;
+      a = Math.max(0, a);
+      b = Math.min(1, Math.max(a + .06, b));
+    }
+    const x0 = a * opt.W, avail = Math.max(opt.fs * 0.9, (b - a) * opt.W);
+
+    /* 贪心塞词 */
+    let line = [], w = 0;
+    while (i < words.length) {
+      const ww = widthOf(words[i], font);
+      const add = line.length ? spaceW + ww : ww;
+      if (line.length && w + add > avail) break;
+      line.push(words[i]); w += add; i++;
+      /* 单词本身就比这行宽 —— 让它自己占一行，且贴块的左边缘。
+         视频里那些突然甩到最左边的孤零零单词就是这么来的。 */
+      if (line.length === 1 && w > avail) break;
+    }
+    if (!line.length) continue;
+
+    const text = line.join(' ');
+    const tw = widthOf(text, font);
+    let x = x0;
+    if (tw > avail) x = 0;                                   /* 溢出：贴左 */
+    else if (opt.align === 'center') x = x0 + (avail - tw) / 2;
+    else if (opt.align === 'right')  x = x0 + (avail - tw);
+
+    out.push({ text, x, y: r * lineH, w: tw });
+  }
+  return { lines: out, rest: i, lineH };
+}
+
+/* ---------- 5. 文案 ---------- */
+const COPY = `Discover the tranquil world of heritage rose cultivation where every petal tells a
+story of patience and seasonal rhythm. In this secluded courtyard garden, an elderly gentleman
+meticulously tends to his prize-winning blooms, demonstrating that the finest things in life
+require time, care, and a gentle touch. The vibrant hues of deep crimson, soft blush, and golden
+yellow roses create a living tapestry against the rugged stone walls. Join us as we explore the
+enduring legacy of traditional horticultural practices that transform simple outdoor spaces into
+extraordinary sanctuaries of natural beauty and peace. Gardening is more than a hobby; it is a
+lifelong conversation with nature that rewards the soul with profound serenity and purpose. By
+understanding the specific needs of each variety, from the robust hybrid tea to the delicate
+floribunda, one learns the subtle language of the seasons. This dedicated gardener utilizes
+age-old techniques, ensuring each rose bush receives the perfect balance of nourishment and
+hydration. His red watering can is a simple yet essential tool in maintaining this flourishing
+oasis, proving that tradition and commitment are the foundations of any truly magnificent and
+thriving private garden.`.split(/\s+/).filter(Boolean);
+
+/* 从文案里任取一段，够长就行 —— 每块起点不同，读起来像同一篇文章的不同片段 */
+function slice(rng){
+  const n = COPY.length, s = rng.int(0, n - 1), out = [];
+  for (let k = 0; k < 260; k++) out.push(COPY[(s + k) % n]);
+  return out;
+}
+
+const SANS = '-apple-system,"Helvetica Neue",Helvetica,Arial,"PingFang SC",sans-serif';
+
+/* ---------- 6. 程序化占位图 ----------
+ * 不引用任何外部图片：花园感的色块 + 颗粒，画到 canvas 上当照片用。 */
+function makeShot(w, h, seed){
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d'), rng = new Rng(seed);
+  /* 所有尺寸都按画布短边 u 缩放，缩略图和大图才长得像同一座花园 */
+  const u = Math.min(w, h);
+  g.fillStyle = '#20301c'; g.fillRect(0, 0, w, h);
+
+  /* 叶层 */
+  for (let i = 0; i < 420; i++){
+    const x = rng.range(0, w), y = rng.range(0, h), r = rng.range(u * .01, u * .075);
+    g.fillStyle = `hsl(${rng.range(72, 132)} ${rng.range(14, 46)}% ${rng.range(8, 34)}%)`;
+    g.globalAlpha = rng.range(.25, .8);
+    g.beginPath(); g.ellipse(x, y, r, r * rng.range(.4, 1), rng.range(0, 6.28), 0, 6.28); g.fill();
+  }
+  /* 花 */
+  const petals = ['#c8402f','#d9573f','#e8a33c','#eac35c','#b8324a','#dd8f7d'];
+  for (let i = 0; i < 34; i++){
+    const x = rng.range(0, w), y = rng.range(h * .18, h), r = rng.range(u * .015, u * .05);
+    const col = rng.pick(petals);
+    g.globalAlpha = .95;
+    for (let p = 0; p < 7; p++){
+      const an = p / 7 * 6.28 + rng.range(0, 1);
+      g.fillStyle = col;
+      g.beginPath();
+      g.ellipse(x + Math.cos(an) * r * .5, y + Math.sin(an) * r * .5, r * .5, r * .34, an, 0, 6.28);
+      g.fill();
+    }
+    g.fillStyle = '#7d2a1c'; g.globalAlpha = .55;
+    g.beginPath(); g.arc(x, y, r * .22, 0, 6.28); g.fill();
+  }
+  /* 中间那位穿亚麻西装的人：软边剪影，不求像，求"那里站着个人" */
+  g.globalAlpha = 1;
+  if (g.filter !== undefined) g.filter = 'blur(' + (u * .004).toFixed(1) + 'px)';
+  const px = w * .5, pw = u * .17;
+  g.globalAlpha = .88;
+  g.fillStyle = '#c4bda9';                                   /* 亚麻西装 */
+  g.beginPath(); g.ellipse(px, h * .60, pw * .46, h * .17, 0, 0, 6.28); g.fill();
+  g.beginPath(); g.ellipse(px, h * .44, pw * .60, h * .07, 0, 0, 6.28); g.fill();
+  g.fillStyle = '#4b4336';                                   /* 裤 */
+  g.beginPath(); g.ellipse(px, h * .80, pw * .30, h * .12, 0, 0, 6.28); g.fill();
+  g.fillStyle = '#c3a288';                                   /* 头 */
+  g.beginPath(); g.ellipse(px, h * .345, pw * .24, pw * .28, 0, 0, 6.28); g.fill();
+  g.fillStyle = '#b8352a';                                   /* 红水壶 */
+  g.beginPath(); g.ellipse(px - pw * 1.0, h * .58, pw * .27, pw * .20, 0, 0, 6.28); g.fill();
+  g.fillRect(px - pw * .88, h * .555, pw * .30, pw * .06);
+  if (g.filter !== undefined) g.filter = 'none';
+
+  /* 颗粒 */
+  const im = g.getImageData(0, 0, w, h), d = im.data;
+  for (let i = 0; i < d.length; i += 4){
+    const n = (rng.next() - .5) * 26;
+    d[i] += n; d[i+1] += n; d[i+2] += n;
+  }
+  g.putImageData(im, 0, 0);
+  return c.toDataURL();
+}
+
+/* ---------- 7. 一张海报 ---------- */
+const poster = document.getElementById('poster');
+const ink = document.getElementById('ink');
+let W = 0, H = 0, blocks = [], seed = Date.now() & 0xffff;
+
+function fit(){
+  const vw = innerWidth, vh = innerHeight, pad = 26;
+  const s = Math.min((vw - pad * 2) / 3, (vh - pad * 2) / 4);
+  W = Math.round(s * 3); H = Math.round(s * 4);
+  poster.style.width = W + 'px'; poster.style.height = H + 'px';
+  ink.setAttribute('viewBox', `0 0 ${W} ${H}`);
+}
+
+/* 手绘墨迹：几根贝塞尔，粗细不一，模仿视频里那些随手一划 */
+function drawInk(rng){
+  ink.innerHTML = '';
+  const n = rng.int(4, 7);
+  for (let i = 0; i < n; i++){
+    const x1 = rng.range(.05, .9) * W, y1 = rng.range(.10, .60) * H;
+    const len = rng.range(.03, .16), ang = rng.range(0, 6.28);
+    const x2 = x1 + Math.cos(ang) * len * W * 1.3, y2 = y1 + Math.sin(ang) * len * H;
+    const cx = (x1 + x2) / 2 + rng.range(-.10, .10) * W;
+    const cy = (y1 + y2) / 2 + rng.range(-.07, .07) * H;
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', `M${x1.toFixed(1)} ${y1.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`);
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke', '#111');
+    p.setAttribute('stroke-width', rng.chance(.3) ? rng.range(4, 7).toFixed(1) : rng.range(1.2, 2.4).toFixed(1));
+    p.setAttribute('stroke-linecap', 'round');
+    ink.appendChild(p);
+  }
+}
+
+/* 一个可拖可拉的排版块 */
+function makeBlock(spec, rng){
+  const el = document.createElement('div');
+  el.className = 'blk';
+  el.dataset.shape = spec.shape;
+  const grip = document.createElement('div');
+  grip.className = 'grip';
+  el.appendChild(grip);
+
+  const b = {
+    el, grip,
+    x: spec.x, y: spec.y, w: spec.w, h: spec.h,
+    w0: spec.w, fs0: spec.fs,                      /* 设计尺寸，用来算拉伸比 */
+    words: slice(rng), align: spec.align, lh: spec.lh || 1.28,
+    shape: spec.shape, jitter: spec.jitter ?? .20,
+    rng: { phase: rng.range(0, 6.28) },
+  };
+  poster.appendChild(el);
+  render(b);
+  bindDrag(b);
+  return b;
+}
+
+/* 字号跟着块宽等比走：拉宽一倍字就大一倍。
+   视频里把细栏拉开、文字从"一条毛边"变成能读的段落，就是这个。 */
+function render(b){
+  const fs = Math.max(5.5, Math.min(34, b.fs0 * (b.w / b.w0)));
+  const r = flow(b.words, {
+    W: b.w, H: b.h, fs, lh: b.lh, family: SANS, weight: 400,
+    shape: SHAPES[b.shape], align: b.align, rng: b.rng, jitter: b.jitter,
+  });
+  b.el.dataset.shape = b.shape;
+  b.el.style.cssText += `;left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px;`;
+  /* 先拆旧行，grip 留着 */
+  [...b.el.querySelectorAll('.ln')].forEach(n => n.remove());
+  const frag = document.createDocumentFragment();
+  for (const ln of r.lines){
+    const d = document.createElement('div');
+    d.className = 'ln';
+    d.style.cssText = `left:${ln.x.toFixed(1)}px;top:${ln.y.toFixed(1)}px;font-size:${fs.toFixed(2)}px;line-height:${(fs*b.lh).toFixed(2)}px`;
+    d.textContent = ln.text;
+    frag.appendChild(d);
+  }
+  b.el.appendChild(frag);
+}
+
+/* 拖动 / 拉伸 / 单击换形状 */
+let sel = null;
+function bindDrag(b){
+  let mode = null, sx = 0, sy = 0, ox = 0, oy = 0, moved = 0;
+
+  const down = (e) => {
+    const pt = e.touches ? e.touches[0] : e;
+    mode = e.target === b.grip ? 'size' : 'move';
+    sx = pt.clientX; sy = pt.clientY; ox = mode === 'size' ? b.w : b.x; oy = mode === 'size' ? b.h : b.y;
+    moved = 0;
+    select(b);
+    e.preventDefault();
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up, { once: true });
+  };
+  const move = (e) => {
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+    if (mode === 'size'){
+      b.w = Math.max(38, ox + dx); b.h = Math.max(40, oy + dy);
+    } else {
+      b.x = ox + dx; b.y = oy + dy;
+    }
+    render(b);
+  };
+  const up = () => {
+    removeEventListener('pointermove', move);
+    /* 没怎么动 = 一次单击：换个形状 */
+    if (moved < 4){
+      b.shape = SHAPE_KEYS[(SHAPE_KEYS.indexOf(b.shape) + 1) % SHAPE_KEYS.length];
+      render(b);
+    }
+    mode = null;
+  };
+  b.el.addEventListener('pointerdown', down);
+}
+function select(b){
+  if (sel) sel.el.classList.remove('sel');
+  sel = b; b.el.classList.add('sel');
+}
+
+/* ---------- 8. 整页 ---------- */
+function build(){
+  fit();
+  [...poster.querySelectorAll('.blk,.head,.shot,.cap,.foot,.kw,.rosette')].forEach(n => n.remove());
+  const rng = new Rng(seed);
+  blocks = [];
+
+  /* 顶部横幅：压扁的一条，视频开头就是这个 */
+  blocks.push(makeBlock({
+    x: W * .045, y: H * .012, w: W * .93, h: H * .095,
+    shape: rng.pick(['河道', '波形', '透镜']), align: 'center', fs: W * .0139, lh: 1.26,
+    jitter: .30,
+  }, rng));
+
+  /* 左侧长栏：那条细细的、歪歪扭扭的主柱 */
+  blocks.push(makeBlock({
+    x: W * .015, y: H * .245, w: W * .145, h: H * .60,
+    shape: rng.pick(['河道', '波形']), align: 'right', fs: W * .0125, lh: 1.34,
+  }, rng));
+
+  /* 中部主块：透镜形，海报的视觉重心 */
+  blocks.push(makeBlock({
+    x: W * .22, y: H * .155, w: W * .50, h: H * .27,
+    shape: rng.pick(['透镜', '沙漏', '楔形']), align: 'center', fs: W * .0167, lh: 1.32,
+  }, rng));
+
+  /* 右侧补块，故意跟中间那块搭一点边——参考图里这种叠压是有意的 */
+  blocks.push(makeBlock({
+    x: W * .655, y: H * .175, w: W * .33, h: H * .145,
+    shape: rng.pick(['倒楔', '河道']), align: 'right', fs: W * .0152, lh: 1.32,
+  }, rng));
+
+  /* 图 + 大标题 */
+  const iw = Math.round(W * .275), ih = Math.round(H * .31);
+  const img = document.createElement('img');
+  img.className = 'shot';
+  img.src = makeShot(iw * 2, ih * 2, seed);
+  img.style.cssText = `left:${W*.455}px;top:${H*.545}px;width:${iw}px;height:${ih}px`;
+  poster.appendChild(img);
+
+  /* 标题：字号由栏宽定，再统一横向压扁。
+     压缩比取「固定值」和「最长一行刚好不出血」里更小的那个 ——
+     既保住超窄字面，又保证任何字体回退下都不会溢出。 */
+  const hx = W * .742, hw = W * .222, hfs = hw * .27;
+  const hfont = `900 ${hfs}px "Haettenschweiler",Impact,"Arial Narrow","Helvetica Neue",Arial,sans-serif`;
+  const HEAD = ['THE TIMELESS', 'ART OF OLD', 'SCHOOL', 'GARDENING'];
+  const widest = Math.max(...HEAD.map(s => widthOf(s, hfont)));
+  const squeeze = Math.min(.55, hw / widest);
+  const head = document.createElement('div');
+  head.className = 'head';
+  head.style.cssText = `left:${hx}px;top:${H*.545}px;width:${hw}px;` +
+    `font-size:${hfs.toFixed(1)}px;line-height:${(hfs*1.40).toFixed(1)}px`;
+  head.innerHTML = HEAD.map(s => `<span style="transform:scaleX(${squeeze.toFixed(3)})">${s}</span>`).join('');
+  poster.appendChild(head);
+
+  /* 图注 */
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.style.cssText = `left:${W*.455}px;top:${H*.865}px;width:${W*.52}px;font-size:${(W*.0153).toFixed(1)}px`;
+  cap.textContent = 'gardening, roses, vintage, horticulture, elderly man.';
+  poster.appendChild(cap);
+
+  /* 左边缘两张小图，视频里一直挂着 */
+  for (const ty of [.135, .855]){
+    const th = document.createElement('img');
+    th.className = 'shot';
+    th.src = makeShot(180, 110, seed + Math.round(ty * 1000));
+    th.style.cssText = `left:${W*.015}px;top:${H*ty}px;width:${W*.125}px;height:${H*.058}px`;
+    poster.appendChild(th);
+  }
+
+  /* 花形徽记 */
+  const ro = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  ro.setAttribute('class', 'rosette');
+  ro.setAttribute('viewBox', '0 0 100 100');
+  ro.style.cssText = `left:${W*.525}px;top:${H*.873}px;width:${W*.105}px;height:${W*.105}px`;
+  let d = '';
+  for (let i = 0; i < 6; i++){
+    const a = i / 6 * Math.PI * 2;
+    d += `<ellipse cx="${(50+Math.cos(a)*21).toFixed(1)}" cy="${(42+Math.sin(a)*21).toFixed(1)}" rx="15" ry="11" transform="rotate(${(a*57.3).toFixed(1)} ${(50+Math.cos(a)*21).toFixed(1)} ${(42+Math.sin(a)*21).toFixed(1)})"/>`;
+  }
+  ro.innerHTML = `<g fill="#111">${d}<circle cx="50" cy="42" r="11" fill="#fff"/><circle cx="50" cy="42" r="6"/>` +
+                 `<path d="M48 58h4v34h-4z"/><path d="M50 74c-14 0-20-8-22-14 10-1 20 4 22 14z"/>` +
+                 `<path d="M50 74c14 0 20-8 22-14-10-1-20 4-22 14z"/></g>`;
+  poster.appendChild(ro);
+
+  /* 关键词 + 页脚 */
+  const kw = document.createElement('div');
+  kw.className = 'kw';
+  kw.style.cssText = `left:${W*.015}px;top:${H*.922}px;font-size:${(W*.0139).toFixed(1)}px`;
+  kw.innerHTML = '**Keywords:**<br>gardening';
+  poster.appendChild(kw);
+
+  const foot = document.createElement('div');
+  foot.className = 'foot';
+  foot.style.cssText = `left:${W*.015}px;bottom:${H*.018}px;font-size:${(W*.0153).toFixed(1)}px`;
+  foot.innerHTML =
+    '<svg viewBox="0 0 100 100" width="15" height="15" fill="#111">' +
+    '<circle cx="50" cy="38" r="13"/><circle cx="26" cy="52" r="13"/><circle cx="74" cy="52" r="13"/>' +
+    '<circle cx="38" cy="74" r="13"/><circle cx="62" cy="74" r="13"/><circle cx="50" cy="56" r="9" fill="#fff"/>' +
+    '</svg><span>© Avant-Garde Poster Studio</span>';
+  poster.appendChild(foot);
+
+  drawInk(rng);
+}
+
+/* ---------- 9. 交互 ---------- */
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space'){ e.preventDefault(); seed = (seed + 1) & 0xffff; build(); }
+  if (e.key === 'c' || e.key === 'C'){ ink.innerHTML = ''; }
+});
+addEventListener('resize', build);
+build();
+</script>
+</body>
+</html>

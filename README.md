@@ -55,6 +55,15 @@ node build.js        # 生成 dist/index.html
 | `src/ui.js` | 面板绑定、抽卡历史、预设存取 |
 | `build.js` | 打包成 `dist/index.html` 单文件 |
 
+## 另外两个实验
+
+同一个仓库里放着两张独立的单页，各自零依赖、直接打开：
+
+| 文件 | 抄的什么 | 机制 |
+|---|---|---|
+| `poster.html` | typowow 的海报编辑器 | 形状排版：每行可用宽度是行号的函数 → [docs/SHAPE-FLOW.md](docs/SHAPE-FLOW.md) |
+| `tape.html` | 纸胶带作品集 | 鼠标拖着卷轴走，走到哪把胶带印到哪 |
+
 ## 声明
 
 仅用于排版生成机制的学习与演示，与原作者及 LotGo 无关。字体版权归原权利人所有。
