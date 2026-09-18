@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>滚滚胶带</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#f2f2f0;color:#111;overflow:hidden;
+    font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+  #cv{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  #cv.drag{cursor:grabbing}
+
+  .hud{position:fixed;pointer-events:none;letter-spacing:.09em;text-transform:uppercase;font-size:10px}
+  .tl{top:18px;left:18px}
+  .tc{top:18px;left:50%;transform:translateX(-50%);text-align:center;line-height:1.7;color:#111}
+  .tr{top:18px;right:18px;text-align:right;line-height:1.9}
+  .tr b{display:inline-block;min-width:56px;text-align:left;font-weight:400;color:#999}
+  .lv{left:16px;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;
+      color:#bbb;letter-spacing:.22em}
+
+  .mark{display:flex;align-items:center;gap:8px}
+  .mark i{width:22px;height:22px;background:#111;color:#fff;display:grid;place-items:center;
+    font-style:normal;font-size:9px;font-weight:700;letter-spacing:0}
+  .mark span{line-height:1.35}
+  .mark em{font-style:normal;display:block;font-size:13px;letter-spacing:.02em;
+    font-family:-apple-system,"PingFang SC",system-ui,sans-serif;font-weight:600}
+
+  .big{position:fixed;bottom:16px;font:800 clamp(34px,7vw,86px)/1 -apple-system,"Helvetica Neue",Arial,sans-serif;
+    letter-spacing:-.03em;color:#111;pointer-events:none}
+  .big.l{left:16px}
+  .big.r{right:16px}
+
+  .bar{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:min(52vw,560px);
+    pointer-events:none}
+  .bar .track{height:12px;background:#111;position:relative;overflow:hidden}
+  .bar .fill{position:absolute;inset:0 auto 0 0;background:#e8442e;width:0%}
+  .bar .lab{display:flex;justify-content:space-between;color:#111;font-size:9px;margin-top:5px;
+    letter-spacing:.14em}
+  .now{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);font-size:10px;
+    letter-spacing:.18em;color:#111;pointer-events:none}
+
+  .card{position:fixed;right:22px;bottom:96px;width:172px;background:#fff;
+    box-shadow:0 10px 30px rgba(0,0,0,.14);pointer-events:none}
+  .card .tt{display:flex;gap:4px;padding:7px 8px;border-bottom:1px solid #eee}
+  .card .tt i{width:7px;height:7px;border-radius:50%;background:#ddd}
+  .card .bd{padding:10px;display:flex;gap:10px;align-items:center}
+  .card .bd .t{font-size:10px;line-height:1.35;font-weight:700;letter-spacing:.04em}
+  .card .bd .t small{display:block;font-weight:400;color:#aaa;margin-top:3px;letter-spacing:.1em}
+  .card .sw{width:52px;height:52px;border-radius:50%;flex:none;background:#ff3ea5}
+  .card .cap{position:absolute;top:-16px;left:0;font-size:9px;letter-spacing:.16em;color:#111}
+
+  @media (max-width:700px){
+    .card{display:none}
+    .tr{display:none}
+    .big{font-size:38px}
+  }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="hud tl mark"><i>RT</i><span><em>滚滚胶带</em>Rolling Tape / Portfolio</span></div>
+<div class="hud tc">Creative Direction × Digital Experiences<br>Built to move.</div>
+<div class="hud tr">
+  <div><b>MOVE</b> DRAG / WHEEL</div>
+  <div><b>FPS</b> <span id="fps">–</span></div>
+  <div><b>ORBIT</b> <span id="orb">OFF</span> [TAB]</div>
+  <div><b>REWIND</b> [SPACE]</div>
+</div>
+<div class="hud lv">Rolling / Keep dragging</div>
+
+<div class="big l">DESIGN</div>
+<div class="big r">CODE</div>
+<div class="now" id="now">#01 &nbsp; SOFT MACHINE</div>
+<div class="bar"><div class="track"><div class="fill" id="fill"></div></div>
+  <div class="lab"><span>View works</span><span id="cnt">000</span></div></div>
+
+<div class="card">
+  <div class="cap">View my sandbox</div>
+  <div class="tt"><i></i><i></i><i></i></div>
+  <div class="bd"><div class="t" id="cardT">SOFT<br>MACHINE<small>OBJECT / 2026</small></div>
+    <div class="sw" id="cardSw"></div></div>
+</div>
+
+<script>
+/* =====================================================================
+ * 滚滚胶带 —— 一条会自己长出新图案的胶带
+ *
+ * 不用任何 3D 库：自己做透视投影 + 逐段仿射贴图。
+ * 核心三件事：
+ *   1) 路径 path(s)：一条在空间里蜿蜒的曲线，s 是沿带长度
+ *   2) 环形贴图：16 个格子循环复用，滚过去一格就重画一格 → 图案无限新
+ *   3) 画家算法：段按深度排序，远的先画，胶带才能正确地互相遮挡
+ * ===================================================================== */
+
+/* ---------- 种子随机（同一格子每次重画都换种子，所以图案一直是新的）---------- */
+function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);
+  t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
+class Rng{
+  constructor(s){this.f=mulberry32(s>>>0);}
+  n(){return this.f();} r(a,b){return a+(b-a)*this.n();}
+  i(a,b){return Math.floor(this.r(a,b+1));} pick(a){return a[Math.floor(this.n()*a.length)];}
+  c(p){return this.n()<p;}
+}
+
+/* ---------- 贴图：16 格环形缓冲 ---------- */
+const SLOTS = 16, PX = 256;              // 每格 256px
+const tex = document.createElement('canvas');
+tex.width = SLOTS * PX; tex.height = PX;
+const tctx = tex.getContext('2d');
+
+const INK = '#141414', PAPER = '#f4f3ef';
+const HUES = ['#e8442e','#f5c518','#2fbd6b','#2b6cf6','#ff3ea5','#141414','#7c4dff','#00c2c7'];
+const WORDS = ['SOFT MACHINE','PAPER DRIFT','LOOP STUDY','NIGHT INDEX','HALF TONE','KEEP ROLLING',
+               'FIELD NOTES','SLOW MOTION','TAPE No.','RE-RUN','GRAIN','OFFSET'];
+
+/* 十种图案母题——照着参考里那卷胶带的调子 */
+function drawPanel(x, seed){
+  const r = new Rng(seed), g = tctx;
+  g.save(); g.beginPath(); g.rect(x,0,PX,PX); g.clip(); g.translate(x,0);
+
+  const base = r.c(.62) ? r.pick(HUES) : PAPER;
+  g.fillStyle = base; g.fillRect(0,0,PX,PX);
+  const fg = base === PAPER ? r.pick(HUES) : (base === INK ? PAPER : INK);
+  const kind = r.c(.12) ? 9 : r.i(0,8);   // 留白只占 12%，其余都是实图案
+
+  if (kind === 0){                                   // 唱片：色底 + 黑圆 + 中心孔
+    g.fillStyle = fg; g.beginPath(); g.arc(PX/2,PX/2,PX*r.r(.26,.34),0,7); g.fill();
+    g.fillStyle = base; g.beginPath(); g.arc(PX/2,PX/2,PX*.055,0,7); g.fill();
+  } else if (kind === 1){                            // 斜条纹
+    g.strokeStyle = fg; g.lineWidth = PX*r.r(.03,.08);
+    for(let i=-PX;i<PX*2;i+=g.lineWidth*r.r(2,3.2)){
+      g.beginPath(); g.moveTo(i,0); g.lineTo(i+PX,PX); g.stroke(); }
+  } else if (kind === 2){                            // 三角
+    g.fillStyle = fg; g.beginPath();
+    const f = r.i(0,3);
+    g.moveTo(f<2?0:PX, 0); g.lineTo(PX, f%2?0:PX); g.lineTo(0, PX); g.closePath(); g.fill();
+  } else if (kind === 3){                            // 同心圆 / 径向
+    for(let i=6;i>0;i--){
+      g.fillStyle = i%2 ? fg : base;
+      g.beginPath(); g.arc(PX*r.r(.35,.65),PX/2,PX*.42*i/6,0,7); g.fill(); }
+  } else if (kind === 4){                            // 竖条
+    const n = r.i(3,7); g.fillStyle = fg;
+    for(let i=0;i<n;i++){ const w = PX/n*r.r(.25,.6);
+      g.fillRect(i*PX/n+(PX/n-w)/2, PX*r.r(.1,.3), w, PX*r.r(.4,.8)); }
+  } else if (kind === 5){                            // 微型字阵
+    g.fillStyle = fg; g.font = `${PX*.07}px ui-monospace,monospace`;
+    for(let i=0;i<r.i(3,6);i++) g.fillText(r.pick(WORDS), PX*.08, PX*(.22+i*.16));
+  } else if (kind === 6){                            // 细网格
+    g.strokeStyle = fg; g.globalAlpha = .5; g.lineWidth = 1;
+    const n = r.i(4,9);
+    for(let i=1;i<n;i++){ g.beginPath(); g.moveTo(i*PX/n,0); g.lineTo(i*PX/n,PX); g.stroke();
+      g.beginPath(); g.moveTo(0,i*PX/n); g.lineTo(PX,i*PX/n); g.stroke(); }
+    g.globalAlpha = 1;
+  } else if (kind === 7){                            // 半调点
+    g.fillStyle = fg; const n = r.i(5,9);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+      const t = (i+j)/(2*n); g.beginPath();
+      g.arc((i+.5)*PX/n,(j+.5)*PX/n, PX/n*.46*(1-t), 0, 7); g.fill(); }
+  } else if (kind === 8){                            // 色块切割
+    g.fillStyle = fg; const v = r.c(.5);
+    const t = r.r(.3,.7);
+    v ? g.fillRect(0,0,PX*t,PX) : g.fillRect(0,0,PX,PX*t);
+    if (r.c(.5)){ g.fillStyle = r.pick(HUES);
+      v ? g.fillRect(PX*t,0,PX*(1-t),PX*.4) : g.fillRect(0,PX*t,PX*.4,PX*(1-t)); }
+  } else {                                           // 留白：画面要有呼吸
+    g.fillStyle = PAPER; g.fillRect(0,0,PX,PX);
+    g.fillStyle = '#bbb'; g.font = `${PX*.06}px ui-monospace,monospace`;
+    g.fillText(r.pick(WORDS), PX*.1, PX*.54);
+  }
+
+  /* 两边的齿边 + 编号，让它像一卷真胶带 */
+  g.fillStyle = base === INK ? '#333' : 'rgba(0,0,0,.14)';
+  for(let i=0;i<PX;i+=PX/10){ g.fillRect(0,i,PX*.02,PX/20); g.fillRect(PX*.98,i,PX*.02,PX/20); }
+  g.fillStyle = base === INK ? '#888' : 'rgba(0,0,0,.4)';
+  g.font = `${PX*.045}px ui-monospace,monospace`;
+  g.fillText('N°' + String(seed%1000).padStart(3,'0'), PX*.05, PX*.96);
+  g.restore();
+}
+
+const slotSeed = new Array(SLOTS).fill(0);
+function fillSlot(slot, idx){                 // idx = 全局第几格，保证每次都是新种子
+  const seed = (idx * 2654435761) >>> 0;
+  slotSeed[slot] = idx;
+  drawPanel(slot * PX, seed);
+}
+for (let i = 0; i < SLOTS; i++) fillSlot(i, i);
+
+/* ---------- 路径：胶带在空间里怎么走 ---------- */
+const WID = 1.45;                              // 带宽
+function path(s){
+  // 蜿蜒：两个不同频率的正弦叠加，再加一点起伏
+  const x = s;
+  const z = 2.6*Math.sin(s*0.42) + 1.5*Math.sin(s*0.19 + 1.3);
+  const y = 0.34*Math.sin(s*0.55 + .7) + 0.18*Math.sin(s*0.31);
+  return [x, y, z];
+}
+function frame(s){
+  const h = .05;
+  const a = path(s-h), b = path(s+h);
+  let tx=b[0]-a[0], ty=b[1]-a[1], tz=b[2]-a[2];
+  const tl = Math.hypot(tx,ty,tz); tx/=tl; ty/=tl; tz/=tl;
+  // 侧向 = T × up
+  let bx = tz*0 - ty*0, by = 0, bz = 0;
+  bx = ty*0 - tz*1; by = tz*0 - tx*0; bz = tx*1 - ty*0;   // T × (0,1,0)
+  const bl = Math.hypot(bx,by,bz); bx/=bl; by/=bl; bz/=bl;
+  // 绕 T 扭一点，带子才有正反面的翻转感
+  const a2 = 0.5*Math.sin(s*0.33) + 0.25*Math.sin(s*0.87+2.);
+  const ca = Math.cos(a2), sa = Math.sin(a2);
+  // N = T × B
+  const nx = ty*bz-tz*by, ny = tz*bx-tx*bz, nz = tx*by-ty*bx;
+  return { p: path(s),
+           b: [bx*ca+nx*sa, by*ca+ny*sa, bz*ca+nz*sa],
+           n: [nx*ca-bx*sa, ny*ca-by*sa, nz*ca-bz*sa] };
+}
+
+/* ---------- 相机 ---------- */
+const cam = { yaw: -0.34, pitch: 0.58, dist: 13.0, tyaw:-0.34, tpitch:0.58 };
+let cx=0, cy=0, F=1;
+function project(p, out){
+  // 平移到视点中心（跟着 s0 走），再按 yaw/pitch 旋到相机空间
+  let x = p[0] - view.cxw, y = p[1], z = p[2];
+  const cy1 = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+  let x1 =  x*cy1 + z*sy, z1 = -x*sy + z*cy1;
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  let y1 =  y*cp - z1*sp, z2 = y*sp + z1*cp;
+  z2 += cam.dist;
+  out[0] = cx + F*x1/z2; out[1] = cy + F*y1/z2; out[2] = z2;
+  return z2 > 0.35;
+}
+
+/* ---------- 状态 ---------- */
+const view = { s0: 0, vel: 0, cxw: 0 };
+const SEG = 1.7;                 // 一格的世界长度，跟带宽接近，图案才不被拉长
+const SPAN = SLOTS * SEG * 0.62; // 一次画多长
+const STEP = 0.16;               // 采样步长
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const shCv = document.createElement('canvas'), shCtx = shCv.getContext('2d');   // 影子离屏层
+const blCv = document.createElement('canvas'), blCtx = blCv.getContext('2d');   // 糊完的影子
+let W=0, H=0, DPR=1;
+function resize(){
+  DPR = Math.min(devicePixelRatio||1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  shCv.width = blCv.width = Math.round(W/3);
+  shCv.height = blCv.height = Math.round(H/3);   // 1/3 分辨率就够，反正要糊
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  cx = W/2; cy = H*0.52; F = Math.min(W,H)*1.15;
+}
+addEventListener('resize', resize); resize();
+
+/* ---------- 交互 ---------- */
+let dragging=false, lastX=0, lastY=0, orbit=false, mx=0, my=0;
+cv.addEventListener('pointerdown', e=>{ dragging=true; cv.classList.add('drag');
+  lastX=e.clientX; lastY=e.clientY; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointerup', e=>{ dragging=false; cv.classList.remove('drag'); });
+cv.addEventListener('pointermove', e=>{
+  mx = (e.clientX/W-.5); my = (e.clientY/H-.5);
+  if(!dragging) return;
+  const dx = e.clientX-lastX, dy = e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if (orbit){ cam.tyaw += dx*0.005; cam.tpitch = Math.max(.12, Math.min(1.35, cam.tpitch + dy*0.004)); }
+  else { view.vel += (dx+dy)* -0.0016 * 1.2; }
+});
+addEventListener('wheel', e=>{ view.vel += e.deltaY*0.0010; }, {passive:true});
+addEventListener('keydown', e=>{
+  if(e.code==='Tab'){ e.preventDefault(); orbit=!orbit; document.getElementById('orb').textContent = orbit?'ON':'OFF'; }
+  if(e.code==='Space'){ e.preventDefault(); view.vel = -0.55; }
+});
+
+/* ---------- 渲染 ---------- */
+const A=[0,0,0], B=[0,0,0], C=[0,0,0], D=[0,0,0];
+let head = SLOTS-1;                       // 已经生成到第几格
+let frames=0, fpsT=performance.now();
+
+function segs(){
+  const out = [];
+  const s0 = view.s0;
+  const n = Math.floor(SPAN/STEP);
+  let prev = null;
+  for(let i=0;i<=n;i++){
+    const s = s0 + i*STEP;
+    const f = frame(s);
+    const l = [f.p[0]-f.b[0]*WID/2, f.p[1]-f.b[1]*WID/2, f.p[2]-f.b[2]*WID/2];
+    const r = [f.p[0]+f.b[0]*WID/2, f.p[1]+f.b[1]*WID/2, f.p[2]+f.b[2]*WID/2];
+    const cur = { l, r, s, n: f.n, p: f.p };
+    if (prev) out.push([prev, cur]);
+    prev = cur;
+  }
+  return out;
+}
+
+/* 一段 = 一个四边形，用仿射把贴图里对应的竖条拉过去 */
+function quad(p0,p1,p2,p3, u0,u1, shade){
+  // p0=左近 p1=右近 p2=右远 p3=左远
+  const su0 = u0*tex.width, su1 = u1*tex.width;
+  const du = su1-su0; if (Math.abs(du) < 1e-6) return;
+  const ex = (p3[0]-p0[0])/du,  ey = (p3[1]-p0[1])/du;        // u 方向
+  const fx = (p1[0]-p0[0])/PX,  fy = (p1[1]-p0[1])/PX;        // v 方向
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]);
+  ctx.lineTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.closePath();
+  ctx.clip();
+  ctx.transform(ex, ey, fx, fy, p0[0]-ex*su0, p0[1]-ey*su0);
+  ctx.drawImage(tex, 0, 0);
+  ctx.restore();
+  if (shade > 0.001){                                          // 受光：压暗
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]);
+    ctx.lineTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.closePath();
+    ctx.fillStyle = `rgba(20,20,26,${shade})`; ctx.fill(); ctx.restore();
+  }
+}
+
+/* 末端那卷胶带：用同一套四边形管线，把带子绕成一个圆 */
+const ROLL_R = 1.55, ROLL_K = 30;
+function rollFaces(sEnd, out){
+  const f = frame(sEnd), h = .05;
+  const a = path(sEnd-h), b2 = path(sEnd+h);
+  let tx=b2[0]-a[0], ty=b2[1]-a[1], tz=b2[2]-a[2];
+  const tl = Math.hypot(tx,ty,tz); tx/=tl; ty/=tl; tz/=tl;
+  const n = f.n, ax = f.b;                       // 轴 = 带子的侧向
+  // 圆心：沿法线抬起一个半径，带子正好切进来
+  const C = [f.p[0]+n[0]*ROLL_R, f.p[1]+n[1]*ROLL_R, f.p[2]+n[2]*ROLL_R];
+  const ring = th => {
+    const c = Math.cos(th), si = Math.sin(th);
+    return [ C[0] - (tx*c + n[0]*si)*ROLL_R,
+             C[1] - (ty*c + n[1]*si)*ROLL_R,
+             C[2] - (tz*c + n[2]*si)*ROLL_R ];
+  };
+  const P=[0,0,0],Q=[0,0,0],R2=[0,0,0],S2=[0,0,0];
+  const uHead = (sEnd/SEG) % SLOTS / SLOTS;
+  for(let k=0;k<ROLL_K;k++){
+    const t0 = k/ROLL_K*Math.PI*2, t1 = (k+1)/ROLL_K*Math.PI*2;
+    const c0 = ring(t0), c1 = ring(t1);
+    const l0=[c0[0]-ax[0]*WID/2, c0[1]-ax[1]*WID/2, c0[2]-ax[2]*WID/2];
+    const r0=[c0[0]+ax[0]*WID/2, c0[1]+ax[1]*WID/2, c0[2]+ax[2]*WID/2];
+    const l1=[c1[0]-ax[0]*WID/2, c1[1]-ax[1]*WID/2, c1[2]-ax[2]*WID/2];
+    const r1=[c1[0]+ax[0]*WID/2, c1[1]+ax[1]*WID/2, c1[2]+ax[2]*WID/2];
+    if(!(project(l0,P)&&project(r0,Q)&&project(r1,R2)&&project(l1,S2))) continue;
+    // 卷起来的部分背光更多，压暗一点做出圆柱感
+    const sh = 0.05 + 0.22*(0.5 - 0.5*Math.cos(t0 + 1.1));
+    out.push({ depth:(P[2]+Q[2]+R2[2]+S2[2])/4, shade: sh,
+      q:[[P[0],P[1]],[Q[0],Q[1]],[R2[0],R2[1]],[S2[0],S2[1]]],
+      u0: uHead + k/ROLL_K*0.5, u1: uHead + (k+1)/ROLL_K*0.5 });
+  }
+  // 两侧端面：浅灰实心圆
+  for (const side of [-1, 1]){
+    const pts = [];
+    let dep = 0, ok = true;
+    for(let k=0;k<ROLL_K;k++){
+      const c = ring(k/ROLL_K*Math.PI*2);
+      const v = [c[0]+ax[0]*side*WID/2, c[1]+ax[1]*side*WID/2, c[2]+ax[2]*side*WID/2];
+      if(!project(v,P)){ ok=false; break; }
+      pts.push([P[0],P[1]]); dep += P[2];
+    }
+    if(ok) out.push({ depth: dep/ROLL_K, flat:'#e6e5e1', poly: pts });
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // 背景：很淡的渐变地面
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fafaf8'); g.addColorStop(1,'#e9e9e5');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  view.cxw = view.s0 + SPAN*0.42;         // 相机跟着带子走
+  cam.yaw   += (cam.tyaw   + mx*0.12 - cam.yaw)   * 0.08;
+  cam.pitch += (cam.tpitch - my*0.06 - cam.pitch) * 0.08;
+
+  const list = segs();
+
+  /* 影子：先画到离屏半分辨率层，再整体糊一次贴回来——
+     逐段模糊太贵，整体糊一次只花一个 drawImage */
+  const GY = -0.72;
+  shCtx.setTransform(1,0,0,1,0,0);
+  shCtx.clearRect(0,0,shCv.width,shCv.height);
+  shCtx.scale(1/3, 1/3);
+  shCtx.fillStyle = '#20202a';
+  for (let si = 0; si < list.length; si += 2){        // 影子反正要糊，隔段取样就够
+    const a = list[si][0], b = list[Math.min(si+2, list.length-1)][1];
+    const fl=[a.l[0],GY,a.l[2]], fr=[a.r[0],GY,a.r[2]],
+          nl=[b.l[0],GY,b.l[2]], nr=[b.r[0],GY,b.r[2]];
+    if(!(project(fl,A)&&project(fr,B)&&project(nr,C)&&project(nl,D))) continue;
+    shCtx.beginPath(); shCtx.moveTo(A[0],A[1]); shCtx.lineTo(B[0],B[1]);
+    shCtx.lineTo(C[0],C[1]); shCtx.lineTo(D[0],D[1]); shCtx.closePath(); shCtx.fill();
+  }
+  // 注意：ctx.filter 的模糊是按「目标尺寸」算的，所以必须在小画布上糊完再放大，
+  // 直接 filter+drawImage 放大会按全屏像素做模糊，白白贵 9 倍。
+  blCtx.setTransform(1,0,0,1,0,0);
+  blCtx.clearRect(0,0,blCv.width,blCv.height);
+  blCtx.filter = 'blur(3px)';
+  blCtx.drawImage(shCv, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = .17;
+  ctx.drawImage(blCv, 0, 0, W, H);
+  ctx.restore();
+
+  /* 带子：按深度远→近画（画家算法），自遮挡才对 */
+  const drawn = [];
+  for (const [a,b] of list){
+    if(!(project(a.l,A)&&project(a.r,B)&&project(b.r,C)&&project(b.l,D))) continue;
+    const depth = (A[2]+B[2]+C[2]+D[2])/4;
+    // 受光：法线与光向的夹角
+    // 纸带两面都会被照到，取绝对值；最多压 0.26，再多就发闷
+    const nd  = a.n[0]*0.35 + a.n[1]*0.86 + a.n[2]*0.38;
+    const lam = Math.abs(nd);
+    const shade = 0.26 * (1 - Math.min(1, lam));
+    drawn.push({ depth, shade,
+      q:[[A[0],A[1]],[B[0],B[1]],[C[0],C[1]],[D[0],D[1]]],
+      u0:(a.s/SEG)%SLOTS/SLOTS, u1:(b.s/SEG)%SLOTS/SLOTS });
+  }
+  rollFaces(view.s0 + SPAN, drawn);       // 末端那一卷，跟带子一起排序
+  drawn.sort((p,q)=>q.depth-p.depth);
+  for(const d of drawn){
+    if (d.poly){                           // 卷轴端面
+      ctx.beginPath();
+      d.poly.forEach((pt,i)=> i ? ctx.lineTo(pt[0],pt[1]) : ctx.moveTo(pt[0],pt[1]));
+      ctx.closePath(); ctx.fillStyle = d.flat; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.lineWidth = 1; ctx.stroke();
+      continue;
+    }
+    let {u0,u1} = d;
+    if (u1 < u0) u1 += 1;                 // 跨过贴图接缝
+    quad(d.q[0],d.q[1],d.q[2],d.q[3], u0, u1, d.shade);
+  }
+}
+
+/* ---------- 主循环 ---------- */
+function tick(now){
+  view.vel *= 0.94;                        // 惯性
+  if (!dragging && Math.abs(view.vel) < 0.0006) view.vel = 0.0065;  // 静止时自己慢慢滚
+  view.s0 += view.vel * 60/60;
+  if (view.s0 < 0) { view.s0 = 0; view.vel = 0; }
+
+  /* 关键：滚过一格就重画那一格 → 图案永远是新的 */
+  const need = Math.floor((view.s0 + SPAN)/SEG) + 2;
+  while (head < need){ head++; fillSlot(((head % SLOTS)+SLOTS)%SLOTS, head); }
+
+  draw();
+
+  frames++;
+  if (now - fpsT > 500){
+    document.getElementById('fps').textContent = Math.round(frames*1000/(now-fpsT));
+    frames = 0; fpsT = now;
+  }
+  const idx = Math.floor(view.s0/SEG);
+  document.getElementById('cnt').textContent = String(idx).padStart(3,'0');
+  document.getElementById('fill').style.width = ((view.s0/SEG)%SLOTS)/SLOTS*100 + '%';
+  const w = WORDS[idx % WORDS.length];
+  document.getElementById('now').textContent = '#' + String(idx%100).padStart(2,'0') + '  ' + w;
+  document.getElementById('cardT').innerHTML = w.replace(' ','<br>') + '<small>OBJECT / 2026</small>';
+  document.getElementById('cardSw').style.background = HUES[idx % HUES.length];
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
