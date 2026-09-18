@@ -131,9 +131,9 @@ function drawPanel(x, seed){
   /* 贴纸：一格上 0~2 块，多数 1 块 */
   const n = r.c(.14) ? 0 : (r.c(.80) ? 1 : 2);
   for (let k=0;k<n;k++){
-    const sz  = PX * r.r(.44, .62);
+    const sz  = PX * r.r(.58, .78);
     const cxp = PX * (n===1 ? r.r(.32,.68) : (k===0 ? r.r(.2,.38) : r.r(.62,.8)));
-    const cyp = PX * r.r(.42, .58);
+    const cyp = PX * r.r(.46, .54);
     const rot = r.r(-.16,.16);
     g.save(); g.translate(cxp,cyp); g.rotate(rot); g.translate(-sz/2,-sz/2);
 
@@ -194,8 +194,8 @@ function path(s){
   const z = 3.5*Math.sin(s*0.34) + 1.9*Math.sin(s*0.155 + 1.3);
   // 离桌面的高度：带子是贴着桌面滑的，只是轻微起伏
   let y = 0.58 + 0.26*Math.sin(s*0.55 + .7) + 0.12*Math.sin(s*0.31);
-  // 末段压下去，让带子降到桌面、卷进卷轴
-  const u = (s - view.s0) / SPAN;
+  // 末段压下去，让带子降到桌面、卷进卷轴（几何固定，跟滚动量无关）
+  const u = s / SPAN;
   if (u > 0.80){
     const t = Math.min(1, (u - 0.80)/0.20);
     y *= 1 - t*t*(3-2*t)*0.97;        // smoothstep 收到几乎贴桌
@@ -223,7 +223,7 @@ function frame(s){
 }
 
 /* ---------- 相机 ---------- */
-const cam = { yaw: -0.34, pitch: 0.58, dist: 13.0, tyaw:-0.34, tpitch:0.58 };
+const cam = { yaw: -0.26, pitch: 0.66, dist: 17.5, tyaw:-0.26, tpitch:0.66 };
 let cx=0, cy=0, F=1;
 function project(p, out){
   // 平移到视点中心（跟着 s0 走），再按 yaw/pitch 旋到相机空间
@@ -241,9 +241,9 @@ function project(p, out){
 
 /* ---------- 状态 ---------- */
 const view = { s0: 0, vel: 0, cxw: 0 };
-const SEG = 1.7;                 // 一格的世界长度，跟带宽接近，图案才不被拉长
-const SPAN = SLOTS * SEG * 0.62; // 一次画多长
-const STEP = 0.16;               // 采样步长
+const SEG = 1.5;                 // 一格 ≈ 带宽，贴纸在世界里才是方的
+const SPAN = 22;                 // 桌上这条带子有多长（固定）
+const STEP = 0.19;               // 采样步长
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const shCv = document.createElement('canvas'), shCtx = shCv.getContext('2d');   // 影子离屏层
@@ -286,7 +286,7 @@ let frames=0, fpsT=performance.now();
 
 function segs(){
   const out = [];
-  const s0 = view.s0;
+  const s0 = 0;                       // 几何固定：带子的形状和位置永远不变
   const n = Math.floor(SPAN/STEP);
   let prev = null;
   for(let i=0;i<=n;i++){
@@ -349,9 +349,10 @@ function rollFaces(sEnd, out){
              C[2] - (tz*c + n[2]*si)*ROLL_R ];
   };
   const P=[0,0,0],Q=[0,0,0],R2=[0,0,0],S2=[0,0,0];
-  const uHead = (sEnd/SEG) % SLOTS / SLOTS;
+  const uHead = ((((sEnd+view.s0)/SEG)%SLOTS)+SLOTS)%SLOTS/SLOTS;
+  const spin = view.s0 / ROLL_R;        // 抽出多少带子，卷轴就转多少
   for(let k=0;k<ROLL_K;k++){
-    const t0 = k/ROLL_K*Math.PI*2, t1 = (k+1)/ROLL_K*Math.PI*2;
+    const t0 = k/ROLL_K*Math.PI*2 + spin, t1 = (k+1)/ROLL_K*Math.PI*2 + spin;
     const c0 = ring(t0), c1 = ring(t1);
     const l0=[c0[0]-ax[0]*WID/2, c0[1]-ax[1]*WID/2, c0[2]-ax[2]*WID/2];
     const r0=[c0[0]+ax[0]*WID/2, c0[1]+ax[1]*WID/2, c0[2]+ax[2]*WID/2];
@@ -404,7 +405,7 @@ function draw(){
   pool.addColorStop(0,'rgba(255,255,255,.85)'); pool.addColorStop(1,'rgba(255,255,255,0)');
   ctx.fillStyle = pool; ctx.fillRect(0,0,W,H);
 
-  view.cxw = view.s0 + SPAN*0.42;         // 相机跟着带子走
+  view.cxw = SPAN*0.52;                   // 相机钉死：桌子不动，只有带子在动
   cam.yaw   += (cam.tyaw   + mx*0.12 - cam.yaw)   * 0.08;
   cam.pitch += (cam.tpitch + my*0.06 - cam.pitch) * 0.08;
 
@@ -435,7 +436,7 @@ function draw(){
   blCtx.drawImage(shCv, 0, 0);
   // 卷轴的接地影：一个压在桌面上的椭圆。没有它，卷轴就是"飘着"的
   {
-    const f = frame(view.s0 + SPAN);
+    const f = frame(SPAN);
     const cxw = f.p[0], czw = f.p[2];
     const P2=[0,0,0]; const pts=[];
     let ok = true;
@@ -475,9 +476,11 @@ function draw(){
     const shade = 0.26 * (1 - Math.min(1, lam));
     drawn.push({ depth, shade,
       q:[[A[0],A[1]],[B[0],B[1]],[C[0],C[1]],[D[0],D[1]]],
-      u0:(a.s/SEG)%SLOTS/SLOTS, u1:(b.s/SEG)%SLOTS/SLOTS });
+      // 滚动的是内容不是几何：u 加上 view.s0，带子就像从卷轴里抽出来
+      u0:(((a.s+view.s0)/SEG)%SLOTS+SLOTS)%SLOTS/SLOTS,
+      u1:(((b.s+view.s0)/SEG)%SLOTS+SLOTS)%SLOTS/SLOTS });
   }
-  rollFaces(view.s0 + SPAN, drawn);       // 末端那一卷，跟带子一起排序
+  rollFaces(SPAN, drawn);                 // 卷轴钉在桌上的固定位置
   drawn.sort((p,q)=>q.depth-p.depth);
   for(const d of drawn){
     if (d.poly){                           // 卷轴端面
@@ -498,11 +501,12 @@ function tick(now){
   view.vel *= 0.94;                        // 惯性
   if (!dragging && Math.abs(view.vel) < 0.0006) view.vel = 0.0065;  // 静止时自己慢慢滚
   view.s0 += view.vel * 60/60;
-  if (view.s0 < 0) { view.s0 = 0; view.vel = 0; }
+
 
   /* 关键：滚过一格就重画那一格 → 图案永远是新的 */
   const need = Math.floor((view.s0 + SPAN)/SEG) + 2;
   while (head < need){ head++; fillSlot(((head % SLOTS)+SLOTS)%SLOTS, head); }
+  if (view.s0 < 0) view.s0 = 0;
 
   draw();
 
