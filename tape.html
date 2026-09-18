@@ -115,67 +115,65 @@ const HUES = ['#e8442e','#f5c518','#2fbd6b','#2b6cf6','#ff3ea5','#141414','#7c4d
 const WORDS = ['SOFT MACHINE','PAPER DRIFT','LOOP STUDY','NIGHT INDEX','HALF TONE','KEEP ROLLING',
                'FIELD NOTES','SLOW MOTION','TAPE No.','RE-RUN','GRAIN','OFFSET'];
 
-/* 十种图案母题——照着参考里那卷胶带的调子 */
+/* 胶带是白纸，图案是「贴上去的色块」——这是参考里最关键的一点：
+   色块小于带宽、带点旋转、之间留白，所以它读起来是纸胶带而不是彩色丝带。 */
 function drawPanel(x, seed){
   const r = new Rng(seed), g = tctx;
   g.save(); g.beginPath(); g.rect(x,0,PX,PX); g.clip(); g.translate(x,0);
 
-  const base = r.c(.62) ? r.pick(HUES) : PAPER;
-  g.fillStyle = base; g.fillRect(0,0,PX,PX);
-  const fg = base === PAPER ? r.pick(HUES) : (base === INK ? PAPER : INK);
-  const kind = r.c(.12) ? 9 : r.i(0,8);   // 留白只占 12%，其余都是实图案
+  g.fillStyle = PAPER; g.fillRect(0,0,PX,PX);          // 纸底
 
-  if (kind === 0){                                   // 唱片：色底 + 黑圆 + 中心孔
-    g.fillStyle = fg; g.beginPath(); g.arc(PX/2,PX/2,PX*r.r(.26,.34),0,7); g.fill();
-    g.fillStyle = base; g.beginPath(); g.arc(PX/2,PX/2,PX*.055,0,7); g.fill();
-  } else if (kind === 1){                            // 斜条纹
-    g.strokeStyle = fg; g.lineWidth = PX*r.r(.03,.08);
-    for(let i=-PX;i<PX*2;i+=g.lineWidth*r.r(2,3.2)){
-      g.beginPath(); g.moveTo(i,0); g.lineTo(i+PX,PX); g.stroke(); }
-  } else if (kind === 2){                            // 三角
-    g.fillStyle = fg; g.beginPath();
-    const f = r.i(0,3);
-    g.moveTo(f<2?0:PX, 0); g.lineTo(PX, f%2?0:PX); g.lineTo(0, PX); g.closePath(); g.fill();
-  } else if (kind === 3){                            // 同心圆 / 径向
-    for(let i=6;i>0;i--){
-      g.fillStyle = i%2 ? fg : base;
-      g.beginPath(); g.arc(PX*r.r(.35,.65),PX/2,PX*.42*i/6,0,7); g.fill(); }
-  } else if (kind === 4){                            // 竖条
-    const n = r.i(3,7); g.fillStyle = fg;
-    for(let i=0;i<n;i++){ const w = PX/n*r.r(.25,.6);
-      g.fillRect(i*PX/n+(PX/n-w)/2, PX*r.r(.1,.3), w, PX*r.r(.4,.8)); }
-  } else if (kind === 5){                            // 微型字阵
-    g.fillStyle = fg; g.font = `${PX*.07}px ui-monospace,monospace`;
-    for(let i=0;i<r.i(3,6);i++) g.fillText(r.pick(WORDS), PX*.08, PX*(.22+i*.16));
-  } else if (kind === 6){                            // 细网格
-    g.strokeStyle = fg; g.globalAlpha = .5; g.lineWidth = 1;
-    const n = r.i(4,9);
-    for(let i=1;i<n;i++){ g.beginPath(); g.moveTo(i*PX/n,0); g.lineTo(i*PX/n,PX); g.stroke();
-      g.beginPath(); g.moveTo(0,i*PX/n); g.lineTo(PX,i*PX/n); g.stroke(); }
-    g.globalAlpha = 1;
-  } else if (kind === 7){                            // 半调点
-    g.fillStyle = fg; const n = r.i(5,9);
-    for(let i=0;i<n;i++) for(let j=0;j<n;j++){
-      const t = (i+j)/(2*n); g.beginPath();
-      g.arc((i+.5)*PX/n,(j+.5)*PX/n, PX/n*.46*(1-t), 0, 7); g.fill(); }
-  } else if (kind === 8){                            // 色块切割
-    g.fillStyle = fg; const v = r.c(.5);
-    const t = r.r(.3,.7);
-    v ? g.fillRect(0,0,PX*t,PX) : g.fillRect(0,0,PX,PX*t);
-    if (r.c(.5)){ g.fillStyle = r.pick(HUES);
-      v ? g.fillRect(PX*t,0,PX*(1-t),PX*.4) : g.fillRect(0,PX*t,PX*.4,PX*(1-t)); }
-  } else {                                           // 留白：画面要有呼吸
-    g.fillStyle = PAPER; g.fillRect(0,0,PX,PX);
-    g.fillStyle = '#bbb'; g.font = `${PX*.06}px ui-monospace,monospace`;
-    g.fillText(r.pick(WORDS), PX*.1, PX*.54);
+  /* 带子两侧的细边线，让它像一条画出来的纸条 */
+  g.strokeStyle = 'rgba(20,20,20,.55)'; g.lineWidth = PX*.012;
+  g.beginPath(); g.moveTo(0,PX*.012); g.lineTo(PX,PX*.012);
+  g.moveTo(0,PX*.988); g.lineTo(PX,PX*.988); g.stroke();
+
+  /* 贴纸：一格上 0~2 块，多数 1 块 */
+  const n = r.c(.14) ? 0 : (r.c(.80) ? 1 : 2);
+  for (let k=0;k<n;k++){
+    const sz  = PX * r.r(.44, .62);
+    const cxp = PX * (n===1 ? r.r(.32,.68) : (k===0 ? r.r(.2,.38) : r.r(.62,.8)));
+    const cyp = PX * r.r(.42, .58);
+    const rot = r.r(-.16,.16);
+    g.save(); g.translate(cxp,cyp); g.rotate(rot); g.translate(-sz/2,-sz/2);
+
+    const hue  = r.pick(HUES);
+    const kind = r.i(0,5);
+    g.fillStyle = hue; g.fillRect(0,0,sz,sz);
+
+    if (kind === 0){                      // 唱片：黑圆 + 白孔
+      g.fillStyle = INK; g.beginPath(); g.arc(sz/2,sz/2,sz*r.r(.26,.33),0,7); g.fill();
+      g.fillStyle = PAPER; g.beginPath(); g.arc(sz/2,sz/2,sz*.07,0,7); g.fill();
+    } else if (kind === 1){               // 对角三角
+      g.fillStyle = r.pick(HUES); g.beginPath();
+      g.moveTo(0,sz); g.lineTo(sz,0); g.lineTo(sz,sz); g.closePath(); g.fill();
+    } else if (kind === 2){               // 竖条
+      g.fillStyle = r.pick(HUES);
+      const m = r.i(3,6);
+      for(let i=0;i<m;i++) g.fillRect(sz*(.12+i*.76/m), sz*.2, sz*.76/m*.5, sz*.6);
+    } else if (kind === 3){               // 同心圈（蓝色系最像参考里那个）
+      for(let i=5;i>0;i--){
+        g.fillStyle = i%2 ? 'rgba(255,255,255,.55)' : hue;
+        g.beginPath(); g.arc(sz/2,sz/2,sz*.44*i/5,0,7); g.fill(); }
+    } else if (kind === 4){               // 黑条 + 编号
+      g.fillStyle = INK; g.fillRect(0, sz*.30, sz, sz*.40);
+      g.fillStyle = PAPER; g.font = `700 ${sz*.2}px ui-monospace,monospace`;
+      g.fillText(String(r.i(1,99)).padStart(2,'0'), sz*.08, sz*.58);
+    } else {                              // 斜纹
+      g.strokeStyle = INK; g.lineWidth = sz*.06;
+      for(let i=-sz;i<sz*2;i+=sz*.2){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+sz,sz); g.stroke(); }
+    }
+    g.restore();
   }
 
-  /* 两边的齿边 + 编号，让它像一卷真胶带 */
-  g.fillStyle = base === INK ? '#333' : 'rgba(0,0,0,.14)';
-  for(let i=0;i<PX;i+=PX/10){ g.fillRect(0,i,PX*.02,PX/20); g.fillRect(PX*.98,i,PX*.02,PX/20); }
-  g.fillStyle = base === INK ? '#888' : 'rgba(0,0,0,.4)';
-  g.font = `${PX*.045}px ui-monospace,monospace`;
-  g.fillText('N°' + String(seed%1000).padStart(3,'0'), PX*.05, PX*.96);
+  /* 纸上的小字：贴着带子走，灰黑色，很小 */
+  g.save();
+  g.fillStyle = 'rgba(20,20,20,.62)';
+  g.font = `${PX*.052}px ui-monospace,monospace`;
+  if (r.c(.75)) g.fillText(r.pick(WORDS), PX*r.r(.06,.3), PX*r.r(.14,.2));
+  if (r.c(.55)) g.fillText('N°' + String(seed%1000).padStart(3,'0') + '  ' + r.pick(WORDS),
+                           PX*r.r(.06,.25), PX*r.r(.86,.93));
+  g.restore();
   g.restore();
 }
 
@@ -193,7 +191,7 @@ const TABLE = 0;              // 桌面高度：一切都发生在这个平面�
 function path(s){
   // 蜿蜒：两个不同频率的正弦叠加
   const x = s;
-  const z = 2.6*Math.sin(s*0.42) + 1.5*Math.sin(s*0.19 + 1.3);
+  const z = 3.5*Math.sin(s*0.34) + 1.9*Math.sin(s*0.155 + 1.3);
   // 离桌面的高度：带子是贴着桌面滑的，只是轻微起伏
   let y = 0.58 + 0.26*Math.sin(s*0.55 + .7) + 0.12*Math.sin(s*0.31);
   // 末段压下去，让带子降到桌面、卷进卷轴
@@ -215,7 +213,7 @@ function frame(s){
   const bl = Math.hypot(bx,by,bz); bx/=bl; by/=bl; bz/=bl;
   // 绕 T 扭一点，带子才有正反面的翻转感
   // 桌面上的纸带只有很轻的侧倾，不做丝带式翻卷
-  const a2 = 0.15*Math.sin(s*0.33) + 0.07*Math.sin(s*0.87+2.);
+  const a2 = 0;                       // 桌上的纸胶带是平摊的，不翻卷
   const ca = Math.cos(a2), sa = Math.sin(a2);
   // N = T × B
   const nx = ty*bz-tz*by, ny = tz*bx-tx*bz, nz = tx*by-ty*bx;
@@ -376,7 +374,22 @@ function rollFaces(sEnd, out){
       if(!project(v,P)){ ok=false; break; }
       pts.push([P[0],P[1]]); dep += P[2];
     }
-    if(ok) out.push({ depth: dep/ROLL_K, flat:'#e6e5e1', poly: pts });
+    if(!ok) continue;
+    out.push({ depth: dep/ROLL_K, flat:'#e4e3df', poly: pts });
+    // 内圈纸芯 + 中心孔：一卷胶带的识别特征全在这儿
+    for (const [rr, col, dz] of [[0.52,'#d3d2cd',-0.02], [0.30,'#9b9a95',-0.04]]){
+      const ip = []; let ok2 = true;
+      for(let k=0;k<ROLL_K;k++){
+        const th = k/ROLL_K*Math.PI*2;
+        const c = ring(th);
+        const v = [C[0] + (c[0]-C[0])*rr + ax[0]*side*WID/2,
+                   C[1] + (c[1]-C[1])*rr,
+                   C[2] + (c[2]-C[2])*rr + ax[2]*side*WID/2];
+        if(!project(v,P)){ ok2=false; break; }
+        ip.push([P[0],P[1]]);
+      }
+      if(ok2) out.push({ depth: dep/ROLL_K + dz, flat: col, poly: ip });
+    }
   }
 }
 
@@ -403,11 +416,13 @@ function draw(){
   shCtx.setTransform(1,0,0,1,0,0);
   shCtx.clearRect(0,0,shCv.width,shCv.height);
   shCtx.scale(1/3, 1/3);
-  shCtx.fillStyle = '#20202a';
+  shCtx.fillStyle = '#1e1e24';
   for (let si = 0; si < list.length; si += 2){        // 影子反正要糊，隔段取样就够
     const a = list[si][0], b = list[Math.min(si+2, list.length-1)][1];
-    const fl=[a.l[0],GY,a.l[2]], fr=[a.r[0],GY,a.r[2]],
-          nl=[b.l[0],GY,b.l[2]], nr=[b.r[0],GY,b.r[2]];
+    // 沿光线方向投影：影子该偏在物体一侧，不是正下方
+    const LX = 0.62, LZ = 0.30;
+    const sp = v => [v[0] + (v[1]-TABLE)*LX, GY, v[2] + (v[1]-TABLE)*LZ];
+    const fl=sp(a.l), fr=sp(a.r), nl=sp(b.l), nr=sp(b.r);
     if(!(project(fl,A)&&project(fr,B)&&project(nr,C)&&project(nl,D))) continue;
     shCtx.beginPath(); shCtx.moveTo(A[0],A[1]); shCtx.lineTo(B[0],B[1]);
     shCtx.lineTo(C[0],C[1]); shCtx.lineTo(D[0],D[1]); shCtx.closePath(); shCtx.fill();
@@ -416,7 +431,7 @@ function draw(){
   // 直接 filter+drawImage 放大会按全屏像素做模糊，白白贵 9 倍。
   blCtx.setTransform(1,0,0,1,0,0);
   blCtx.clearRect(0,0,blCv.width,blCv.height);
-  blCtx.filter = 'blur(3px)';
+  blCtx.filter = 'blur(1.6px)';
   blCtx.drawImage(shCv, 0, 0);
   // 卷轴的接地影：一个压在桌面上的椭圆。没有它，卷轴就是"飘着"的
   {
@@ -426,7 +441,10 @@ function draw(){
     let ok = true;
     for(let k=0;k<20;k++){
       const th = k/20*Math.PI*2;
-      const v = [cxw + Math.cos(th)*ROLL_R*0.92, TABLE+0.004, czw + Math.sin(th)*ROLL_R*0.42];
+      // 卷轴又高又圆，影子被拉成一条斜着的长椭圆
+      const v = [cxw + Math.cos(th)*ROLL_R*0.95 + ROLL_R*0.62,
+                 TABLE+0.004,
+                 czw + Math.sin(th)*ROLL_R*0.52 + ROLL_R*0.30];
       if(!project(v,P2)){ ok=false; break; }
       pts.push([P2[0],P2[1]]);
     }
@@ -438,10 +456,10 @@ function draw(){
   }
   blCtx.setTransform(1,0,0,1,0,0);
   blCtx.clearRect(0,0,blCv.width,blCv.height);
-  blCtx.filter = 'blur(3px)';
+  blCtx.filter = 'blur(1.6px)';
   blCtx.drawImage(shCv, 0, 0);
   ctx.save();
-  ctx.globalAlpha = .19;
+  ctx.globalAlpha = .26;
   ctx.drawImage(blCv, 0, 0, W, H);
   ctx.restore();
 
