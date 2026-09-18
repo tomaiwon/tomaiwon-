@@ -189,12 +189,20 @@ for (let i = 0; i < SLOTS; i++) fillSlot(i, i);
 
 /* ---------- 路径：胶带在空间里怎么走 ---------- */
 const WID = 1.45;                              // 带宽
+const TABLE = 0;              // 桌面高度：一切都发生在这个平面上
 function path(s){
-  // 蜿蜒：两个不同频率的正弦叠加，再加一点起伏
+  // 蜿蜒：两个不同频率的正弦叠加
   const x = s;
   const z = 2.6*Math.sin(s*0.42) + 1.5*Math.sin(s*0.19 + 1.3);
-  const y = 0.34*Math.sin(s*0.55 + .7) + 0.18*Math.sin(s*0.31);
-  return [x, y, z];
+  // 离桌面的高度：带子是贴着桌面滑的，只是轻微起伏
+  let y = 0.58 + 0.26*Math.sin(s*0.55 + .7) + 0.12*Math.sin(s*0.31);
+  // 末段压下去，让带子降到桌面、卷进卷轴
+  const u = (s - view.s0) / SPAN;
+  if (u > 0.80){
+    const t = Math.min(1, (u - 0.80)/0.20);
+    y *= 1 - t*t*(3-2*t)*0.97;        // smoothstep 收到几乎贴桌
+  }
+  return [x, TABLE + y, z];
 }
 function frame(s){
   const h = .05;
@@ -206,7 +214,8 @@ function frame(s){
   bx = ty*0 - tz*1; by = tz*0 - tx*0; bz = tx*1 - ty*0;   // T × (0,1,0)
   const bl = Math.hypot(bx,by,bz); bx/=bl; by/=bl; bz/=bl;
   // 绕 T 扭一点，带子才有正反面的翻转感
-  const a2 = 0.5*Math.sin(s*0.33) + 0.25*Math.sin(s*0.87+2.);
+  // 桌面上的纸带只有很轻的侧倾，不做丝带式翻卷
+  const a2 = 0.15*Math.sin(s*0.33) + 0.07*Math.sin(s*0.87+2.);
   const ca = Math.cos(a2), sa = Math.sin(a2);
   // N = T × B
   const nx = ty*bz-tz*by, ny = tz*bx-tx*bz, nz = tx*by-ty*bx;
@@ -226,7 +235,9 @@ function project(p, out){
   const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
   let y1 =  y*cp - z1*sp, z2 = y*sp + z1*cp;
   z2 += cam.dist;
-  out[0] = cx + F*x1/z2; out[1] = cy + F*y1/z2; out[2] = z2;
+  // 屏幕 y 向下，世界 y 向上，这里必须取负——否则整个场景上下颠倒，
+  // 影子会跑到物体上方
+  out[0] = cx + F*x1/z2; out[1] = cy - F*y1/z2; out[2] = z2;
   return z2 > 0.35;
 }
 
@@ -262,7 +273,7 @@ cv.addEventListener('pointermove', e=>{
   const dx = e.clientX-lastX, dy = e.clientY-lastY;
   lastX=e.clientX; lastY=e.clientY;
   if (orbit){ cam.tyaw += dx*0.005; cam.tpitch = Math.max(.12, Math.min(1.35, cam.tpitch + dy*0.004)); }
-  else { view.vel += (dx+dy)* -0.0016 * 1.2; }
+  else { view.vel += (dx - dy)* -0.0016 * 1.2; }
 });
 addEventListener('wheel', e=>{ view.vel += e.deltaY*0.0010; }, {passive:true});
 addEventListener('keydown', e=>{
@@ -320,15 +331,19 @@ function quad(p0,p1,p2,p3, u0,u1, shade){
 }
 
 /* 末端那卷胶带：用同一套四边形管线，把带子绕成一个圆 */
-const ROLL_R = 1.55, ROLL_K = 30;
+const ROLL_R = 2.15, ROLL_K = 34;
 function rollFaces(sEnd, out){
   const f = frame(sEnd), h = .05;
   const a = path(sEnd-h), b2 = path(sEnd+h);
-  let tx=b2[0]-a[0], ty=b2[1]-a[1], tz=b2[2]-a[2];
-  const tl = Math.hypot(tx,ty,tz); tx/=tl; ty/=tl; tz/=tl;
-  const n = f.n, ax = f.b;                       // 轴 = 带子的侧向
-  // 圆心：沿法线抬起一个半径，带子正好切进来
-  const C = [f.p[0]+n[0]*ROLL_R, f.p[1]+n[1]*ROLL_R, f.p[2]+n[2]*ROLL_R];
+  let tx=b2[0]-a[0], ty=0, tz=b2[2]-a[2];        // 切线也拍平到桌面
+  const tl = Math.hypot(tx,tz) || 1; tx/=tl; tz/=tl;
+  // 卷轴是立在桌面上的实物：轴保持水平，圆心离桌面正好一个半径，
+  // 所以它永远稳稳地坐在桌上，不跟着带子翻滚。
+  let axx = f.b[0], axz = f.b[2];
+  const al = Math.hypot(axx, axz) || 1;
+  const ax = [axx/al, 0, axz/al];                // 轴：水平，垂直于带子走向
+  const n = [0, 1, 0];                           // 法线 = 桌面朝上
+  const C = [f.p[0], TABLE + ROLL_R, f.p[2]];
   const ring = th => {
     const c = Math.cos(th), si = Math.sin(th);
     return [ C[0] - (tx*c + n[0]*si)*ROLL_R,
@@ -369,18 +384,22 @@ function draw(){
   ctx.clearRect(0,0,W,H);
   // 背景：很淡的渐变地面
   const g = ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#fafaf8'); g.addColorStop(1,'#e9e9e5');
+  g.addColorStop(0,'#fbfbf9'); g.addColorStop(1,'#e6e6e1');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // 桌面上的一片光：没有它，白底就只是"空"，不是"桌"
+  const pool = ctx.createRadialGradient(W*0.5, H*0.62, 0, W*0.5, H*0.62, Math.max(W,H)*0.62);
+  pool.addColorStop(0,'rgba(255,255,255,.85)'); pool.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = pool; ctx.fillRect(0,0,W,H);
 
   view.cxw = view.s0 + SPAN*0.42;         // 相机跟着带子走
   cam.yaw   += (cam.tyaw   + mx*0.12 - cam.yaw)   * 0.08;
-  cam.pitch += (cam.tpitch - my*0.06 - cam.pitch) * 0.08;
+  cam.pitch += (cam.tpitch + my*0.06 - cam.pitch) * 0.08;
 
   const list = segs();
 
   /* 影子：先画到离屏半分辨率层，再整体糊一次贴回来——
      逐段模糊太贵，整体糊一次只花一个 drawImage */
-  const GY = -0.72;
+  const GY = TABLE + 0.005;      // 影子落在桌面上
   shCtx.setTransform(1,0,0,1,0,0);
   shCtx.clearRect(0,0,shCv.width,shCv.height);
   shCtx.scale(1/3, 1/3);
@@ -399,8 +418,30 @@ function draw(){
   blCtx.clearRect(0,0,blCv.width,blCv.height);
   blCtx.filter = 'blur(3px)';
   blCtx.drawImage(shCv, 0, 0);
+  // 卷轴的接地影：一个压在桌面上的椭圆。没有它，卷轴就是"飘着"的
+  {
+    const f = frame(view.s0 + SPAN);
+    const cxw = f.p[0], czw = f.p[2];
+    const P2=[0,0,0]; const pts=[];
+    let ok = true;
+    for(let k=0;k<20;k++){
+      const th = k/20*Math.PI*2;
+      const v = [cxw + Math.cos(th)*ROLL_R*0.92, TABLE+0.004, czw + Math.sin(th)*ROLL_R*0.42];
+      if(!project(v,P2)){ ok=false; break; }
+      pts.push([P2[0],P2[1]]);
+    }
+    if(ok){
+      shCtx.beginPath();
+      pts.forEach((pt,i)=> i ? shCtx.lineTo(pt[0],pt[1]) : shCtx.moveTo(pt[0],pt[1]));
+      shCtx.closePath(); shCtx.fill();
+    }
+  }
+  blCtx.setTransform(1,0,0,1,0,0);
+  blCtx.clearRect(0,0,blCv.width,blCv.height);
+  blCtx.filter = 'blur(3px)';
+  blCtx.drawImage(shCv, 0, 0);
   ctx.save();
-  ctx.globalAlpha = .17;
+  ctx.globalAlpha = .19;
   ctx.drawImage(blCv, 0, 0, W, H);
   ctx.restore();
 
