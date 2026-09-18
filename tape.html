@@ -6,10 +6,9 @@
 <title>滚滚胶带</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;background:#f3f3f1;color:#111;overflow:hidden;
+  html,body{height:100%;background:#f6f6f4;color:#111;overflow:hidden;
     font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
   #cv{display:block;width:100%;height:100%;cursor:none;touch-action:none}
-
   .hud{position:fixed;pointer-events:none;letter-spacing:.09em;text-transform:uppercase;font-size:10px}
   .tl{top:18px;left:18px}
   .tc{top:18px;left:50%;transform:translateX(-50%);text-align:center;line-height:1.7}
@@ -17,24 +16,20 @@
   .tr b{display:inline-block;min-width:56px;text-align:left;font-weight:400;color:#aaa}
   .lv{left:16px;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;
       color:#bbb;letter-spacing:.22em}
-
   .mark{display:flex;align-items:center;gap:8px}
   .mark i{width:22px;height:22px;background:#111;color:#fff;display:grid;place-items:center;
     font-style:normal;font-size:9px;font-weight:700;letter-spacing:0}
   .mark em{font-style:normal;display:block;font-size:13px;letter-spacing:.02em;
     font-family:-apple-system,"PingFang SC",system-ui,sans-serif;font-weight:600}
-
   .big{position:fixed;bottom:16px;font:800 clamp(34px,7vw,86px)/1 -apple-system,"Helvetica Neue",Arial,sans-serif;
     letter-spacing:-.03em;color:#111;pointer-events:none}
   .big.l{left:16px} .big.r{right:16px}
-
   .bar{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:min(52vw,560px);pointer-events:none}
   .bar .track{height:12px;background:#111;position:relative;overflow:hidden}
   .bar .fill{position:absolute;inset:0 auto 0 0;background:#e8442e;width:0%}
   .bar .lab{display:flex;justify-content:space-between;font-size:9px;margin-top:5px;letter-spacing:.14em}
   .now{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);font-size:10px;
     letter-spacing:.18em;pointer-events:none}
-
   .card{position:fixed;right:22px;bottom:96px;width:172px;background:#fff;
     box-shadow:0 10px 30px rgba(0,0,0,.14);pointer-events:none}
   .card .tt{display:flex;gap:4px;padding:7px 8px;border-bottom:1px solid #eee}
@@ -44,13 +39,11 @@
   .card .bd .t small{display:block;font-weight:400;color:#aaa;margin-top:3px;letter-spacing:.1em}
   .card .sw{width:52px;height:52px;border-radius:50%;flex:none;background:#ff3ea5}
   .card .cap{position:absolute;top:-16px;left:0;font-size:9px;letter-spacing:.16em}
-
   @media (max-width:700px){ .card,.tr{display:none} .big{font-size:38px} }
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
-
 <div class="hud tl mark"><i>RT</i><span><em>滚滚胶带</em>Rolling Tape / Portfolio</span></div>
 <div class="hud tc">Creative Direction × Digital Experiences<br>Built to move.</div>
 <div class="hud tr">
@@ -60,13 +53,11 @@
   <div><b>CLEAR</b> [SPACE]</div>
 </div>
 <div class="hud lv">Rolling / Keep moving</div>
-
 <div class="big l">DESIGN</div>
 <div class="big r">CODE</div>
 <div class="now" id="now">#01 &nbsp; SOFT MACHINE</div>
 <div class="bar"><div class="track"><div class="fill" id="fill"></div></div>
   <div class="lab"><span>View works</span><span id="cnt">000</span></div></div>
-
 <div class="card">
   <div class="cap">View my sandbox</div>
   <div class="tt"><i></i><i></i><i></i></div>
@@ -78,19 +69,16 @@
 /* =====================================================================
  * 滚滚胶带
  *
- * 心智模型：桌面上放着一卷胶带，鼠标拖着它走。
- * 走到哪，胶带就印到哪 —— 带子的形状就是卷轴走过的轨迹，
- * 贴纸在铺下去的那一刻按弧长印上，所以一直往前走就一直出新图案。
- *
- * 呈现是二维的：带子是一条 2D 轨迹沿法线外扩出来的形状，
- * 贴纸是平的方块，只跟着切线转角度，不做任何透视变形。
- * 整张图里只有卷轴画出立体感。
+ * 场景：一个地面。鼠标拖着一卷胶带在地面上走，走到哪把带子印到哪。
+ * 带子是「平摊在地面上的缎带」——法线永远朝上，完全不扭转；
+ * 但呈现是透视的：相机角度很低，带子往远处退，贴纸跟着表面走。
+ * 整个场景里只有卷轴是立起来的。
  * ===================================================================== */
 
 function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);
   t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
 class Rng{
-  constructor(s){this.f=mulberry32((s*2654435761)>>>0);}
+  constructor(s){this.f=mulberry32(s>>>0);}
   n(){return this.f();} r(a,b){return a+(b-a)*this.n();}
   i(a,b){return Math.floor(this.r(a,b+1));} pick(a){return a[Math.floor(this.n()*a.length)];}
   c(p){return this.n()<p;}
@@ -101,233 +89,262 @@ const HUES=['#e8442e','#f5c518','#2fbd6b','#2b6cf6','#ff3ea5','#141414','#7c4dff
 const WORDS=['SOFT MACHINE','PAPER DRIFT','LOOP STUDY','NIGHT INDEX','HALF TONE','KEEP ROLLING',
              'FIELD NOTES','SLOW MOTION','AFTER IMAGE','RE-RUN','GRAIN','OFFSET'];
 
-const TAPE_W = 104;         // 带宽
-const STEP   = 128;         // 每隔这么长弧长印一张贴纸
-const ROLL_R = 104;         // 卷轴半径
-const MAX_ARC= 6400;        // 桌上最多留这么长的胶带，更旧的收掉
-const MIN_D  = 5;           // 走过这么远才记一个轨迹点
+/* ---------- 贴图：24 格环形缓冲，每格是一段带子 ---------- */
+const SLOTS=24, PX=256;
+const tex=document.createElement('canvas');
+tex.width=SLOTS*PX; tex.height=PX;
+const tctx=tex.getContext('2d');
 
-/* ---------- 轨迹：卷轴走过的路。带子的形状完全由它决定 ---------- */
-const trail = [];           // {x, y, s}  s = 从开局累计的弧长
-let arcTotal = 0;
-
-function pushPoint(x, y){
-  const last = trail[trail.length-1];
-  if (last){
-    const d = Math.hypot(x-last.x, y-last.y);
-    if (d < MIN_D) return;
-    arcTotal += d;
+function drawPanel(x, seed){
+  const r=new Rng(seed), g=tctx;
+  g.save(); g.beginPath(); g.rect(x,0,PX,PX); g.clip(); g.translate(x,0);
+  g.fillStyle=PAPER; g.fillRect(0,0,PX,PX);
+  g.strokeStyle='rgba(20,20,20,.5)'; g.lineWidth=PX*.014;
+  g.beginPath(); g.moveTo(0,PX*.014); g.lineTo(PX,PX*.014);
+  g.moveTo(0,PX*.986); g.lineTo(PX,PX*.986); g.stroke();
+  const n=r.c(.16)?0:1;
+  for(let k=0;k<n;k++){
+    const sz=PX*r.r(.60,.78), cxp=PX*r.r(.34,.66), cyp=PX*r.r(.47,.53), rot=r.r(-.14,.14);
+    g.save(); g.translate(cxp,cyp); g.rotate(rot); g.translate(-sz/2,-sz/2);
+    g.beginPath(); g.rect(0,0,sz,sz); g.clip();
+    const hue=r.pick(HUES), kind=r.i(0,5);
+    g.fillStyle=hue; g.fillRect(0,0,sz,sz);
+    if(kind===0){ g.fillStyle=INK; g.beginPath(); g.arc(sz/2,sz/2,sz*r.r(.26,.33),0,7); g.fill();
+      g.fillStyle=PAPER; g.beginPath(); g.arc(sz/2,sz/2,sz*.07,0,7); g.fill(); }
+    else if(kind===1){ g.fillStyle=r.pick(HUES); g.beginPath();
+      g.moveTo(0,sz); g.lineTo(sz,0); g.lineTo(sz,sz); g.closePath(); g.fill(); }
+    else if(kind===2){ g.fillStyle=r.pick(HUES); const m=r.i(3,6);
+      for(let i=0;i<m;i++) g.fillRect(sz*(.12+i*.76/m), sz*.2, sz*.76/m*.5, sz*.6); }
+    else if(kind===3){ for(let i=5;i>0;i--){ g.fillStyle=i%2?'rgba(255,255,255,.55)':hue;
+      g.beginPath(); g.arc(sz/2,sz/2,sz*.44*i/5,0,7); g.fill(); } }
+    else if(kind===4){ g.fillStyle=INK; g.fillRect(0,sz*.30,sz,sz*.40);
+      g.fillStyle=PAPER; g.font=`700 ${sz*.2}px ui-monospace,monospace`;
+      g.fillText(String(r.i(1,99)).padStart(2,'0'), sz*.08, sz*.58); }
+    else { g.strokeStyle=INK; g.lineWidth=sz*.06;
+      for(let i=-sz;i<sz*2;i+=sz*.2){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+sz,sz); g.stroke(); } }
+    g.restore();
   }
-  trail.push({x, y, s: arcTotal});
-  while (trail.length > 2 && arcTotal - trail[0].s > MAX_ARC) trail.shift();
-}
-
-/* 开局先铺一段，页面打开就有东西看 */
-function seedTrail(cx, cy){
-  trail.length = 0; arcTotal = 0;
-  for (let i=0;i<=220;i++){
-    const t = i/220;
-    pushPoint(cx - 620 + t*1240 , cy + 150*Math.sin(t*7.4+0.4) + 66*Math.sin(t*3.1+1.6));
-  }
-}
-
-/* 轨迹上某个弧长处的点和切线 */
-function atArc(s){
-  let lo=0, hi=trail.length-1;
-  if (s<=trail[0].s) { lo=0; hi=Math.min(1,hi); }
-  else if (s>=trail[hi].s) { lo=Math.max(0,hi-1); }
-  else { while(hi-lo>1){ const m=(lo+hi)>>1; trail[m].s<s?lo=m:hi=m; } }
-  const a=trail[lo], b=trail[hi]||a;
-  const f=(b.s-a.s)?(s-a.s)/(b.s-a.s):0;
-  const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy)||1;
-  return { x:a.x+dx*f, y:a.y+dy*f, tx:dx/l, ty:dy/l };
-}
-function tanAt(i){
-  const a=trail[Math.max(0,i-1)], b=trail[Math.min(trail.length-1,i+1)];
-  const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy)||1;
-  return [dx/l, dy/l];
-}
-
-/* ---------- 贴纸：平的方块，零透视变形 ---------- */
-function sticker(g, idx, size){
-  const r=new Rng(idx), hue=r.pick(HUES), kind=r.i(0,5), s=size;
-  g.fillStyle=hue; g.fillRect(-s/2,-s/2,s,s);
-  g.save(); g.beginPath(); g.rect(-s/2,-s/2,s,s); g.clip(); g.translate(-s/2,-s/2);
-  if(kind===0){
-    g.fillStyle=INK; g.beginPath(); g.arc(s/2,s/2,s*r.r(.26,.33),0,7); g.fill();
-    g.fillStyle=PAPER; g.beginPath(); g.arc(s/2,s/2,s*.075,0,7); g.fill();
-  } else if(kind===1){
-    g.fillStyle=r.pick(HUES); g.beginPath();
-    g.moveTo(0,s); g.lineTo(s,0); g.lineTo(s,s); g.closePath(); g.fill();
-  } else if(kind===2){
-    g.fillStyle=r.pick(HUES); const m=r.i(3,6);
-    for(let i=0;i<m;i++) g.fillRect(s*(.12+i*.76/m), s*.18, s*.76/m*.52, s*.64);
-  } else if(kind===3){
-    for(let i=5;i>0;i--){ g.fillStyle=i%2?'rgba(255,255,255,.6)':hue;
-      g.beginPath(); g.arc(s/2,s/2,s*.44*i/5,0,7); g.fill(); }
-  } else if(kind===4){
-    g.fillStyle=INK; g.fillRect(0,s*.30,s,s*.40);
-    g.fillStyle=PAPER; g.font=`700 ${s*.21}px ui-monospace,monospace`;
-    g.fillText(String(idx%100).padStart(2,'0'), s*.08, s*.585);
-  } else {
-    g.strokeStyle=INK; g.lineWidth=s*.07;
-    for(let i=-s;i<s*2;i+=s*.21){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+s,s); g.stroke(); }
-  }
+  g.fillStyle='rgba(20,20,20,.6)'; g.font=`${PX*.05}px ui-monospace,monospace`;
+  if(r.c(.8)) g.fillText(r.pick(WORDS), PX*r.r(.06,.3), PX*.15);
+  if(r.c(.6)) g.fillText('N°'+String(seed%1000).padStart(3,'0'), PX*r.r(.06,.3), PX*.93);
   g.restore();
-  g.strokeStyle='rgba(0,0,0,.32)'; g.lineWidth=1.2; g.strokeRect(-s/2,-s/2,s,s);
 }
+function fillSlot(idx){ drawPanel(((idx%SLOTS)+SLOTS)%SLOTS*PX, (idx*2654435761)>>>0); }
+for(let i=0;i<SLOTS;i++) fillSlot(i);
 
-/* ---------- 画布 ---------- */
+/* ---------- 世界参数 ---------- */
+const WID=1.55;          // 带宽
+const SEG=1.55;          // 一格贴图对应的世界长度（≈带宽，贴纸才是方的）
+const LIFT=0.05;         // 带子离地一点点，影子才看得见
+const ROLL_R=1.15;
+const MAX_ARC=95;        // 地上最多留这么长的胶带
+const MIN_D=0.28;        // 走这么远记一个点
+
+/* ---------- 相机：低角度，带子往远处退 ---------- */
+const cam={ y:4.3, z:0, pitch:0.265 };
+let W=0,H=0,DPR=1,F=1,CX=0,CY=0;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let W=0,H=0,DPR=1;
 function resize(){
   DPR=Math.min(devicePixelRatio||1,2);
   W=innerWidth; H=innerHeight;
   cv.width=W*DPR; cv.height=H*DPR;
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  if(!trail.length) seedTrail(W*0.5, H*0.48);
+  F=H*1.25; CX=W/2; CY=-0.22*H;          // 投影中心抬到画面上方 → 地平线靠近顶部
 }
 addEventListener('resize',resize); resize();
 
-/* ---------- 卷轴跟着鼠标走 ---------- */
-const roll={ x:0, y:0, tx:0, ty:0, spin:0 };
-roll.x = roll.tx = trail[trail.length-1].x;
-roll.y = roll.ty = trail[trail.length-1].y;
-let hasMouse=false;
+function project(p,out){                  // 世界 → 屏幕
+  const x=p[0], y=p[1]-cam.y, z=p[2]-cam.z;
+  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  const y1=y*cp - z*sp, z2=y*sp + z*cp;
+  if(z2<0.4) return false;
+  out[0]=CX + F*x/z2; out[1]=CY - F*y1/z2; out[2]=z2;
+  return true;
+}
+function screenToGround(sx,sy){           // 屏幕 → 地面上的点（反解射线）
+  const u=(sx-CX)/F, v=-(sy-CY)/F;
+  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  const den=v*cp+sp;
+  if(den>-0.02) return null;              // 太靠近地平线：反解会跑到无穷远，直接不接受
+  const z2=(0-cam.y)/den;
+  if(z2>70||z2<1) return null;            // 超出可用范围也不接受
+  return [u*z2, 0, z2*(cp - v*sp) + cam.z];
+}
 
-cv.addEventListener('pointermove',e=>{ roll.tx=e.clientX; roll.ty=e.clientY; hasMouse=true; });
-cv.addEventListener('pointerdown',e=>{ roll.tx=e.clientX; roll.ty=e.clientY; hasMouse=true; });
-addEventListener('keydown',e=>{
-  if(e.code==='Space'){ e.preventDefault(); seedTrail(roll.x, roll.y);
-    roll.x=roll.tx=trail[trail.length-1].x; roll.y=roll.ty=trail[trail.length-1].y; }
-});
-
-/* ---------- 带子的形状：轨迹沿法线外扩 ---------- */
-function ribbon(a, b, edgesOnly){
-  if (b-a < 1) return;
-  if (!edgesOnly){
-    ctx.beginPath();
-    for(let i=a;i<=b;i++){ const t=tanAt(i), w=TAPE_W/2;
-      const x=trail[i].x-t[1]*w, y=trail[i].y+t[0]*w;
-      i===a?ctx.moveTo(x,y):ctx.lineTo(x,y); }
-    for(let i=b;i>=a;i--){ const t=tanAt(i), w=TAPE_W/2;
-      ctx.lineTo(trail[i].x+t[1]*w, trail[i].y-t[0]*w); }
-    ctx.closePath();
-    return;
+/* ---------- 轨迹：卷轴在地面上走过的路 ---------- */
+const trail=[];   // {x,z,s}
+let arcTotal=0, head=SLOTS-1;
+function pushPoint(x,z){
+  const last=trail[trail.length-1];
+  if(last){
+    const d=Math.hypot(x-last.x, z-last.z);
+    if(d<MIN_D) return;
+    arcTotal+=d;
   }
-  for(const side of [-1,1]){
-    ctx.beginPath();
-    for(let i=a;i<=b;i++){ const t=tanAt(i), w=TAPE_W/2*side;
-      const x=trail[i].x-t[1]*w, y=trail[i].y+t[0]*w;
-      i===a?ctx.moveTo(x,y):ctx.lineTo(x,y); }
-    ctx.stroke();
+  trail.push({x,z,s:arcTotal});
+  while(trail.length>2 && arcTotal-trail[0].s>MAX_ARC) trail.shift();
+  const need=Math.floor(arcTotal/SEG)+2;
+  while(head<need){ head++; fillSlot(head); }
+}
+function seed(){
+  trail.length=0; arcTotal=0;
+  for(let i=0;i<=200;i++){
+    const t=i/200;
+    pushPoint(-14+t*26, 26 - t*16 + 4.5*Math.sin(t*7.5));
+  }
+}
+seed();
+function tanAt(i){
+  const a=trail[Math.max(0,i-1)], b=trail[Math.min(trail.length-1,i+1)];
+  const dx=b.x-a.x, dz=b.z-a.z, l=Math.hypot(dx,dz)||1;
+  return [dx/l, dz/l];
+}
+
+/* ---------- 一段 = 一个四边形，仿射把贴图对应的竖条拉过去 ---------- */
+function quad(p0,p1,p2,p3,u0,u1,shade){
+  const su0=u0*tex.width, su1=u1*tex.width, du=su1-su0;
+  if(Math.abs(du)<1e-6) return;
+  const ex=(p3[0]-p0[0])/du, ey=(p3[1]-p0[1])/du;
+  const fx=(p1[0]-p0[0])/PX, fy=(p1[1]-p0[1])/PX;
+  ctx.save(); ctx.beginPath();
+  ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]);
+  ctx.lineTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.closePath(); ctx.clip();
+  ctx.transform(ex,ey,fx,fy,p0[0]-ex*su0,p0[1]-ey*su0);
+  ctx.drawImage(tex,0,0);
+  if(su1>tex.width||su0>tex.width) ctx.drawImage(tex,tex.width,0);   // 贴图不自动重复，跨界补一张
+  if(su0<0||su1<0) ctx.drawImage(tex,-tex.width,0);
+  ctx.restore();
+  if(shade>0.001){
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]);
+    ctx.lineTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.closePath();
+    ctx.fillStyle=`rgba(20,20,26,${shade})`; ctx.fill(); ctx.restore();
   }
 }
 
-/* ---------- 卷轴：整张图里唯一有立体感的东西 ---------- */
-function drawRoll(){
-  const rx=ROLL_R, ry=ROLL_R*0.78, thx=52, thy=-30, rot=-0.14;
-  ctx.save(); ctx.translate(roll.x, roll.y);
-  for(let i=30;i>=0;i--){                       // 圆柱厚度：一叠椭圆
-    const f=i/30, g=198-48*f;
-    ctx.save(); ctx.translate(thx*f, thy*f); ctx.rotate(rot);
-    ctx.fillStyle=`rgb(${g},${g},${g-5})`;
-    ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,7); ctx.fill();
-    ctx.restore();
+/* ---------- 卷轴：立在地面上，被鼠标拖着走 ---------- */
+const roll={x:0,z:0,tx:0,tz:0,spin:0};
+roll.x=roll.tx=trail[trail.length-1].x; roll.z=roll.tz=trail[trail.length-1].z;
+let hasMouse=false;
+cv.addEventListener('pointermove',e=>{
+  const g=screenToGround(e.clientX,e.clientY);
+  if(g){ roll.tx=g[0]; roll.tz=g[2]; hasMouse=true; }
+});
+addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); seed();
+  roll.x=roll.tx=trail[trail.length-1].x; roll.z=roll.tz=trail[trail.length-1].z; } });
+
+const A=[0,0,0],B=[0,0,0],C=[0,0,0],D=[0,0,0];
+function rollFaces(out){
+  const n=trail.length-1, t=tanAt(n);
+  const ax=[-t[1],0,t[0]];                       // 轴：水平，垂直于走向
+  const cen=[roll.x, ROLL_R, roll.z];
+  const K=26, uH=((Math.floor(arcTotal/SEG)%SLOTS)+SLOTS)%SLOTS/SLOTS;
+  const ring=th=>[ cen[0]-t[0]*Math.cos(th)*ROLL_R, cen[1]-Math.sin(th)*ROLL_R,
+                   cen[2]-t[1]*Math.cos(th)*ROLL_R ];
+  for(let k=0;k<K;k++){
+    const a0=k/K*Math.PI*2-roll.spin, a1=(k+1)/K*Math.PI*2-roll.spin;
+    const c0=ring(a0), c1=ring(a1);
+    const l0=[c0[0]-ax[0]*WID/2,c0[1],c0[2]-ax[2]*WID/2], r0=[c0[0]+ax[0]*WID/2,c0[1],c0[2]+ax[2]*WID/2];
+    const l1=[c1[0]-ax[0]*WID/2,c1[1],c1[2]-ax[2]*WID/2], r1=[c1[0]+ax[0]*WID/2,c1[1],c1[2]+ax[2]*WID/2];
+    if(!(project(l0,A)&&project(r0,B)&&project(r1,C)&&project(l1,D))) continue;
+    out.push({d:(A[2]+B[2]+C[2]+D[2])/4, sh:0.04+0.20*(0.5-0.5*Math.cos(a0+1.2)),
+      q:[[A[0],A[1]],[B[0],B[1]],[C[0],C[1]],[D[0],D[1]]],
+      u0:uH+k/K*0.45, u1:uH+(k+1)/K*0.45});
   }
-  ctx.save(); ctx.translate(thx,thy); ctx.rotate(rot);
-  const head=Math.floor(arcTotal/STEP);
-  for(let k=0;k<16;k++){                        // 缠在外缘的胶带，随走过的距离转
-    const r2=new Rng(head+k+7);
-    ctx.save(); ctx.rotate(-roll.spin + k/16*Math.PI*2);
-    ctx.fillStyle=r2.c(.5)?r2.pick(HUES):PAPER;
-    ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,-0.185,0.185);
-    ctx.ellipse(0,0,rx*.93,ry*.93,0,0.185,-0.185,true); ctx.closePath(); ctx.fill();
-    ctx.restore();
+  for(const side of [-1,1]){                     // 两侧端面 + 纸芯 + 中心孔
+    for(const [rr,col,dz] of [[1,'#e6e4df',0],[0.5,'#d2d0ca',-0.02],[0.28,'#fbfaf7',-0.04]]){
+      const pts=[]; let ok=true, dep=0;
+      for(let k=0;k<K;k++){
+        const c=ring(k/K*Math.PI*2);
+        const v=[cen[0]+(c[0]-cen[0])*rr+ax[0]*side*WID/2, cen[1]+(c[1]-cen[1])*rr,
+                 cen[2]+(c[2]-cen[2])*rr+ax[2]*side*WID/2];
+        if(!project(v,A)){ ok=false; break; }
+        pts.push([A[0],A[1]]); dep+=A[2];
+      }
+      if(ok) out.push({d:dep/K+dz, flat:col, poly:pts});
+    }
   }
-  ctx.fillStyle='#edebe6'; ctx.beginPath(); ctx.ellipse(0,0,rx*.925,ry*.925,0,0,7); ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,.30)'; ctx.lineWidth=1.6;
-  ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,7); ctx.stroke();
-  ctx.fillStyle='#d9d7d1'; ctx.beginPath(); ctx.ellipse(0,0,rx*.50,ry*.50,0,0,7); ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,.16)';
-  ctx.beginPath(); ctx.ellipse(0,0,rx*.50,ry*.50,0,0,7); ctx.stroke();
-  ctx.fillStyle=PAPER; ctx.beginPath(); ctx.ellipse(0,0,rx*.29,ry*.29,0,0,7); ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,.24)';
-  ctx.beginPath(); ctx.ellipse(0,0,rx*.29,ry*.29,0,0,7); ctx.stroke();
-  ctx.restore(); ctx.restore();
 }
 
 /* ---------- 绘制 ---------- */
-const SX=26, SY=32;                              // 影子偏移
 function draw(){
   const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#fbfbf9'); g.addColorStop(1,'#eaeae6');
+  g.addColorStop(0,'#fdfdfc'); g.addColorStop(0.42,'#f3f3f0'); g.addColorStop(1,'#e7e7e3');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
   const n=trail.length-1;
-  if(n<2){ return; }
-  const CH=Math.max(4, Math.ceil(n/22));          // 分段：后画的压住先画的
+  if(n<2) return;
 
-  /* 影子 */
-  ctx.save(); ctx.translate(SX,SY);
-  ctx.fillStyle='rgba(30,30,36,.15)';
-  for(let c=0;c<CH;c++){ ribbon(Math.floor(c*n/CH), Math.floor((c+1)*n/CH)); ctx.fill(); }
-  ctx.translate(roll.x+12, roll.y+4);
-  ctx.beginPath(); ctx.ellipse(0,0,ROLL_R*1.06,ROLL_R*0.84,-0.14,0,7); ctx.fill();
-  ctx.restore();
-
-  /* 带子 + 印在上面的贴纸，从旧到新依次画 */
-  for(let c=0;c<CH;c++){
-    const a=Math.floor(c*n/CH), b=Math.floor((c+1)*n/CH);
-    ctx.fillStyle=PAPER; ribbon(a,b); ctx.fill();
-
-    const sa=trail[a].s, sb=trail[b].s;
-    for(let k=Math.floor(sa/STEP); k<=Math.ceil(sb/STEP); k++){
-      const s=k*STEP;
-      if(s<sa||s>=sb) continue;
-      const q=atArc(s), r=new Rng(k);
-      if(r.c(.13)) continue;                      // 留白
-      const ang=Math.atan2(q.ty,q.tx);
-      ctx.save(); ctx.translate(q.x,q.y); ctx.rotate(ang+r.r(-.12,.12));
-      sticker(ctx,k,TAPE_W*r.r(.60,.76));
-      ctx.restore();
-      ctx.save(); ctx.translate(q.x,q.y); ctx.rotate(ang);
-      ctx.fillStyle='rgba(20,20,20,.6)';
-      ctx.font=`${TAPE_W*.105}px ui-monospace,monospace`;
-      ctx.fillText(WORDS[k%WORDS.length], -TAPE_W*.44, -TAPE_W*.36);
-      ctx.fillText('N°'+String(k%1000).padStart(3,'0'), -TAPE_W*.44, TAPE_W*.44);
-      ctx.restore();
+  /* 影子：沿光线投到地面 */
+  const LX=0.55, LZ=0.32;
+  ctx.fillStyle='rgba(30,30,38,.16)';
+  for(let i=0;i<n;i++){
+    const t0=tanAt(i), t1=tanAt(i+1), a=trail[i], b=trail[i+1];
+    const sp=(p)=>[p[0]+LIFT*LX, 0.002, p[2]+LIFT*LZ];
+    const q0=sp([a.x-t0[1]*WID/2,0,a.z+t0[0]*WID/2]), q1=sp([a.x+t0[1]*WID/2,0,a.z-t0[0]*WID/2]);
+    const q2=sp([b.x+t1[1]*WID/2,0,b.z-t1[0]*WID/2]), q3=sp([b.x-t1[1]*WID/2,0,b.z+t1[0]*WID/2]);
+    if(!(project(q0,A)&&project(q1,B)&&project(q2,C)&&project(q3,D))) continue;
+    ctx.beginPath(); ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]);
+    ctx.lineTo(C[0],C[1]); ctx.lineTo(D[0],D[1]); ctx.closePath(); ctx.fill();
+  }
+  {                                              // 卷轴的接地影
+    const pts=[]; let ok=true;
+    for(let k=0;k<22;k++){
+      const th=k/22*Math.PI*2;
+      const v=[roll.x+Math.cos(th)*ROLL_R*1.02+ROLL_R*0.7, 0.003, roll.z+Math.sin(th)*ROLL_R*0.75+ROLL_R*0.4];
+      if(!project(v,A)){ ok=false; break; }
+      pts.push([A[0],A[1]]);
     }
-    ctx.strokeStyle='rgba(20,20,20,.6)'; ctx.lineWidth=1.6; ribbon(a,b,true);
+    if(ok){ ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+      ctx.closePath(); ctx.fill(); }
   }
 
-  drawRoll();
+  /* 带子：平摊在地面上，法线永远朝上，一点不扭 */
+  const faces=[];
+  for(let i=0;i<n;i++){
+    const t0=tanAt(i), t1=tanAt(i+1), a=trail[i], b=trail[i+1];
+    const p0=[a.x-t0[1]*WID/2, LIFT, a.z+t0[0]*WID/2];
+    const p1=[a.x+t0[1]*WID/2, LIFT, a.z-t0[0]*WID/2];
+    const p2=[b.x+t1[1]*WID/2, LIFT, b.z-t1[0]*WID/2];
+    const p3=[b.x-t1[1]*WID/2, LIFT, b.z+t1[0]*WID/2];
+    if(!(project(p0,A)&&project(p1,B)&&project(p2,C)&&project(p3,D))) continue;
+    faces.push({d:(A[2]+B[2]+C[2]+D[2])/4, sh:0,
+      q:[[A[0],A[1]],[B[0],B[1]],[C[0],C[1]],[D[0],D[1]]],
+      u0:((a.s/SEG)%SLOTS+SLOTS)%SLOTS/SLOTS, u1:((b.s/SEG)%SLOTS+SLOTS)%SLOTS/SLOTS});
+  }
+  rollFaces(faces);
+  faces.sort((p,q)=>q.d-p.d);                    // 远的先画
+  for(const f of faces){
+    if(f.poly){ ctx.beginPath();
+      f.poly.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+      ctx.closePath(); ctx.fillStyle=f.flat; ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.16)'; ctx.lineWidth=1; ctx.stroke(); continue; }
+    let {u0,u1}=f; if(u1<u0) u1+=1;
+    quad(f.q[0],f.q[1],f.q[2],f.q[3],u0,u1,f.sh);
+  }
 }
 
 /* ---------- 主循环 ---------- */
-let frames=0, fpsT=performance.now(), auto=0;
+let frames=0,fpsT=performance.now(),auto=0;
 function tick(now){
-  /* 没碰鼠标时自己慢慢画，页面不至于死着 */
-  if(!hasMouse){
-    auto+=0.016;
-    roll.tx = W*0.5 + Math.cos(auto*0.7)*W*0.28;
-    roll.ty = H*0.46 + Math.sin(auto*1.15)*H*0.22;
-  }
-  const px=roll.x, py=roll.y;
-  roll.x += (roll.tx-roll.x)*0.14;               // 缓动：卷轴像被拖着走
-  roll.y += (roll.ty-roll.y)*0.14;
-  const moved=Math.hypot(roll.x-px, roll.y-py);
-  roll.spin += moved/ROLL_R;                     // 走多远转多少
-  pushPoint(roll.x, roll.y);                     // 走到哪印到哪
-
+  if(!hasMouse){ auto+=0.016;
+    roll.tx=Math.cos(auto*0.62)*11; roll.tz=13+Math.sin(auto*0.95)*7; }
+  const px=roll.x, pz=roll.z;
+  roll.x+=(roll.tx-roll.x)*0.10; roll.z+=(roll.tz-roll.z)*0.10;
+  // 再钳一道：单帧最多走这么远，避免任何情况下的瞬移把弧长撑爆
+  let mv=Math.hypot(roll.x-px, roll.z-pz);
+  if(mv>1.6){ const k2=1.6/mv; roll.x=px+(roll.x-px)*k2; roll.z=pz+(roll.z-pz)*k2; mv=1.6; }
+  const moved=mv;
+  roll.spin+=moved/ROLL_R;
+  pushPoint(roll.x, roll.z);
   draw();
 
   frames++;
   if(now-fpsT>500){ document.getElementById('fps').textContent=Math.round(frames*1000/(now-fpsT));
     frames=0; fpsT=now; }
-  const k=Math.floor(arcTotal/STEP);
+  const k=Math.floor(arcTotal/SEG);
   document.getElementById('cnt').textContent=String(k).padStart(3,'0');
-  document.getElementById('len').textContent=(arcTotal/1200).toFixed(2);
+  document.getElementById('len').textContent=(arcTotal/12).toFixed(2);
   document.getElementById('fill').style.width=(k%12)/12*100+'%';
   const w=WORDS[k%WORDS.length];
   document.getElementById('now').textContent='#'+String(k%100).padStart(2,'0')+'  '+w;
