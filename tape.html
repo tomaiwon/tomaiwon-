@@ -8,8 +8,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;background:#f3f3f1;color:#111;overflow:hidden;
     font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
-  #cv{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
-  #cv.drag{cursor:grabbing}
+  #cv{display:block;width:100%;height:100%;cursor:none;touch-action:none}
 
   .hud{position:fixed;pointer-events:none;letter-spacing:.09em;text-transform:uppercase;font-size:10px}
   .tl{top:18px;left:18px}
@@ -55,12 +54,12 @@
 <div class="hud tl mark"><i>RT</i><span><em>滚滚胶带</em>Rolling Tape / Portfolio</span></div>
 <div class="hud tc">Creative Direction × Digital Experiences<br>Built to move.</div>
 <div class="hud tr">
-  <div><b>MOVE</b> DRAG / WHEEL</div>
+  <div><b>MOVE</b> FREE / 鼠标</div>
   <div><b>FPS</b> <span id="fps">–</span></div>
   <div><b>TAPE</b> <span id="len">0.00</span> M</div>
-  <div><b>REWIND</b> [SPACE]</div>
+  <div><b>CLEAR</b> [SPACE]</div>
 </div>
-<div class="hud lv">Rolling / Keep dragging</div>
+<div class="hud lv">Rolling / Keep moving</div>
 
 <div class="big l">DESIGN</div>
 <div class="big r">CODE</div>
@@ -79,14 +78,15 @@
 /* =====================================================================
  * 滚滚胶带
  *
- * 最关键的一点：这是一张二维插画，不是三维场景。
- * 带子就是一条 2D 路径描出来的形状；贴纸是「平的方块」，只跟着切线转个
- * 角度，不做任何透视变形。整张图里只有卷轴画出立体感。
+ * 心智模型：桌面上放着一卷胶带，鼠标拖着它走。
+ * 走到哪，胶带就印到哪 —— 带子的形状就是卷轴走过的轨迹，
+ * 贴纸在铺下去的那一刻按弧长印上，所以一直往前走就一直出新图案。
  *
- * 卷轴钉死在桌面上不动；拖动滚的是带子上的内容——胶带从卷轴里抽出来。
+ * 呈现是二维的：带子是一条 2D 轨迹沿法线外扩出来的形状，
+ * 贴纸是平的方块，只跟着切线转角度，不做任何透视变形。
+ * 整张图里只有卷轴画出立体感。
  * ===================================================================== */
 
-/* ---------- 种子随机：第 n 张贴纸永远长一个样，往回拖能拖回原来那张 ---------- */
 function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);
   t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
 class Rng{
@@ -101,47 +101,57 @@ const HUES=['#e8442e','#f5c518','#2fbd6b','#2b6cf6','#ff3ea5','#141414','#7c4dff
 const WORDS=['SOFT MACHINE','PAPER DRIFT','LOOP STUDY','NIGHT INDEX','HALF TONE','KEEP ROLLING',
              'FIELD NOTES','SLOW MOTION','AFTER IMAGE','RE-RUN','GRAIN','OFFSET'];
 
-/* ---------- 虚拟画布：坐标都在这个尺寸里定义，最后整体缩放贴合窗口 ---------- */
-const VW=1600, VH=900;
-const TAPE_W=112;                             // 带宽
-const STEP=124;                               // 贴纸间隔（弧长）
-const ROLL_X=1270, ROLL_Y=436, ROLL_R=124;
+const TAPE_W = 104;         // 带宽
+const STEP   = 128;         // 每隔这么长弧长印一张贴纸
+const ROLL_R = 104;         // 卷轴半径
+const MAX_ARC= 6400;        // 桌上最多留这么长的胶带，更旧的收掉
+const MIN_D  = 5;           // 走过这么远才记一个轨迹点
 
-/* ---------- 路径：平面上的一条蛇形，从卷轴往左铺开 ---------- */
-function pt(t){
-  const x = ROLL_X - t*1580;
-  const y = ROLL_Y + 126*Math.sin(t*10.6 + 0.30) + 70*Math.sin(t*4.3 + 1.9);
-  return [x, y];
+/* ---------- 轨迹：卷轴走过的路。带子的形状完全由它决定 ---------- */
+const trail = [];           // {x, y, s}  s = 从开局累计的弧长
+let arcTotal = 0;
+
+function pushPoint(x, y){
+  const last = trail[trail.length-1];
+  if (last){
+    const d = Math.hypot(x-last.x, y-last.y);
+    if (d < MIN_D) return;
+    arcTotal += d;
+  }
+  trail.push({x, y, s: arcTotal});
+  while (trail.length > 2 && arcTotal - trail[0].s > MAX_ARC) trail.shift();
 }
-function widthAt(u){ return TAPE_W * (1 - 0.15*Math.min(1,Math.max(0,u))); }
 
-/* 采样 + 弧长表，贴纸才能等距摆放 */
-const N=260, TMAX=1.06;
-const P=[], TAN=[], ARC=[0];
-for (let i=0;i<=N;i++) P.push(pt(i/N*TMAX));
-for (let i=0;i<=N;i++){
-  const a=P[Math.max(0,i-1)], b=P[Math.min(N,i+1)];
-  const dx=b[0]-a[0], dy=b[1]-a[1], l=Math.hypot(dx,dy)||1;
-  TAN.push([dx/l,dy/l]);
-  if(i>0) ARC.push(ARC[i-1]+Math.hypot(P[i][0]-P[i-1][0], P[i][1]-P[i-1][1]));
+/* 开局先铺一段，页面打开就有东西看 */
+function seedTrail(cx, cy){
+  trail.length = 0; arcTotal = 0;
+  for (let i=0;i<=220;i++){
+    const t = i/220;
+    pushPoint(cx - 620 + t*1240 , cy + 150*Math.sin(t*7.4+0.4) + 66*Math.sin(t*3.1+1.6));
+  }
 }
-const TOTAL=ARC[N];
 
+/* 轨迹上某个弧长处的点和切线 */
 function atArc(s){
-  if(s<=0) return {p:P[0],tan:TAN[0],i:0};
-  if(s>=TOTAL) return {p:P[N],tan:TAN[N],i:N};
-  let lo=0,hi=N;
-  while(hi-lo>1){ const m=(lo+hi)>>1; ARC[m]<s?lo=m:hi=m; }
-  const f=(s-ARC[lo])/((ARC[hi]-ARC[lo])||1);
-  return { p:[P[lo][0]+(P[hi][0]-P[lo][0])*f, P[lo][1]+(P[hi][1]-P[lo][1])*f],
-           tan:TAN[lo], i:lo };
+  let lo=0, hi=trail.length-1;
+  if (s<=trail[0].s) { lo=0; hi=Math.min(1,hi); }
+  else if (s>=trail[hi].s) { lo=Math.max(0,hi-1); }
+  else { while(hi-lo>1){ const m=(lo+hi)>>1; trail[m].s<s?lo=m:hi=m; } }
+  const a=trail[lo], b=trail[hi]||a;
+  const f=(b.s-a.s)?(s-a.s)/(b.s-a.s):0;
+  const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy)||1;
+  return { x:a.x+dx*f, y:a.y+dy*f, tx:dx/l, ty:dy/l };
+}
+function tanAt(i){
+  const a=trail[Math.max(0,i-1)], b=trail[Math.min(trail.length-1,i+1)];
+  const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy)||1;
+  return [dx/l, dy/l];
 }
 
 /* ---------- 贴纸：平的方块，零透视变形 ---------- */
 function sticker(g, idx, size){
   const r=new Rng(idx), hue=r.pick(HUES), kind=r.i(0,5), s=size;
   g.fillStyle=hue; g.fillRect(-s/2,-s/2,s,s);
-  // 必须裁到方块内：斜纹那一档会画到框外，拉出长黑条
   g.save(); g.beginPath(); g.rect(-s/2,-s/2,s,s); g.clip(); g.translate(-s/2,-s/2);
   if(kind===0){
     g.fillStyle=INK; g.beginPath(); g.arc(s/2,s/2,s*r.r(.26,.33),0,7); g.fill();
@@ -169,74 +179,67 @@ function sticker(g, idx, size){
 
 /* ---------- 画布 ---------- */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let W=0,H=0,K=1,OX=0,OY=0,DPR=1;
+let W=0,H=0,DPR=1;
 function resize(){
   DPR=Math.min(devicePixelRatio||1,2);
   W=innerWidth; H=innerHeight;
   cv.width=W*DPR; cv.height=H*DPR;
-  K=Math.min(W/VW,H/VH)*0.99;      // 装下整幅设计，不裁切
-  OX=(W-VW*K)/2; OY=(H-VH*K)/2;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(!trail.length) seedTrail(W*0.5, H*0.48);
 }
 addEventListener('resize',resize); resize();
-const toScene=()=>ctx.setTransform(DPR*K,0,0,DPR*K,DPR*OX,DPR*OY);
-const toPix  =()=>ctx.setTransform(DPR,0,0,DPR,0,0);
 
-/* ---------- 状态与交互 ---------- */
-const view={s:0,vel:0};
-let dragging=false,lx=0,ly=0;
-cv.addEventListener('pointerdown',e=>{dragging=true;cv.classList.add('drag');
-  lx=e.clientX;ly=e.clientY;cv.setPointerCapture(e.pointerId);});
-cv.addEventListener('pointerup',()=>{dragging=false;cv.classList.remove('drag');});
-cv.addEventListener('pointermove',e=>{
-  if(!dragging)return;
-  const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
-  view.vel -= (dx-dy)*0.85/K;     // 往左拖 = 把带子从卷轴里抽出来
+/* ---------- 卷轴跟着鼠标走 ---------- */
+const roll={ x:0, y:0, tx:0, ty:0, spin:0 };
+roll.x = roll.tx = trail[trail.length-1].x;
+roll.y = roll.ty = trail[trail.length-1].y;
+let hasMouse=false;
+
+cv.addEventListener('pointermove',e=>{ roll.tx=e.clientX; roll.ty=e.clientY; hasMouse=true; });
+cv.addEventListener('pointerdown',e=>{ roll.tx=e.clientX; roll.ty=e.clientY; hasMouse=true; });
+addEventListener('keydown',e=>{
+  if(e.code==='Space'){ e.preventDefault(); seedTrail(roll.x, roll.y);
+    roll.x=roll.tx=trail[trail.length-1].x; roll.y=roll.ty=trail[trail.length-1].y; }
 });
-addEventListener('wheel',e=>{ view.vel += e.deltaY*0.5/K; },{passive:true});
-addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault(); view.vel=-28;} });
 
-/* ---------- 带子的形状 ---------- */
-function ribbonChunk(a,b){
-  ctx.beginPath();
-  for(let i=a;i<=b;i++){
-    const w=widthAt(i/N)/2, t=TAN[i];
-    const x=P[i][0]-t[1]*w, y=P[i][1]+t[0]*w;
-    i===a?ctx.moveTo(x,y):ctx.lineTo(x,y);
+/* ---------- 带子的形状：轨迹沿法线外扩 ---------- */
+function ribbon(a, b, edgesOnly){
+  if (b-a < 1) return;
+  if (!edgesOnly){
+    ctx.beginPath();
+    for(let i=a;i<=b;i++){ const t=tanAt(i), w=TAPE_W/2;
+      const x=trail[i].x-t[1]*w, y=trail[i].y+t[0]*w;
+      i===a?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+    for(let i=b;i>=a;i--){ const t=tanAt(i), w=TAPE_W/2;
+      ctx.lineTo(trail[i].x+t[1]*w, trail[i].y-t[0]*w); }
+    ctx.closePath();
+    return;
   }
-  for(let i=b;i>=a;i--){
-    const w=widthAt(i/N)/2, t=TAN[i];
-    ctx.lineTo(P[i][0]+t[1]*w, P[i][1]-t[0]*w);
-  }
-  ctx.closePath();
-}
-function ribbonEdges(a,b){
   for(const side of [-1,1]){
     ctx.beginPath();
-    for(let i=a;i<=b;i++){
-      const w=widthAt(i/N)/2*side, t=TAN[i];
-      const x=P[i][0]-t[1]*w, y=P[i][1]+t[0]*w;
-      i===a?ctx.moveTo(x,y):ctx.lineTo(x,y);
-    }
+    for(let i=a;i<=b;i++){ const t=tanAt(i), w=TAPE_W/2*side;
+      const x=trail[i].x-t[1]*w, y=trail[i].y+t[0]*w;
+      i===a?ctx.moveTo(x,y):ctx.lineTo(x,y); }
     ctx.stroke();
   }
 }
 
 /* ---------- 卷轴：整张图里唯一有立体感的东西 ---------- */
-function roll(){
-  const thx=58, thy=-32, rx=ROLL_R, ry=ROLL_R*0.78, rot=-0.15;
-  for(let i=34;i>=0;i--){                 // 圆柱侧面：一叠椭圆，带明暗
-    const f=i/34, g=196-46*f;
-    ctx.save(); ctx.translate(ROLL_X+thx*f, ROLL_Y+thy*f); ctx.rotate(rot);
+function drawRoll(){
+  const rx=ROLL_R, ry=ROLL_R*0.78, thx=52, thy=-30, rot=-0.14;
+  ctx.save(); ctx.translate(roll.x, roll.y);
+  for(let i=30;i>=0;i--){                       // 圆柱厚度：一叠椭圆
+    const f=i/30, g=198-48*f;
+    ctx.save(); ctx.translate(thx*f, thy*f); ctx.rotate(rot);
     ctx.fillStyle=`rgb(${g},${g},${g-5})`;
     ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,7); ctx.fill();
     ctx.restore();
   }
-  ctx.save(); ctx.translate(ROLL_X+thx,ROLL_Y+thy); ctx.rotate(rot);
-  const head=Math.floor(view.s/STEP);
-  for(let k=0;k<16;k++){                  // 缠在外缘的胶带，随抽出量转
-    const a0=-view.s/ROLL_R + k/16*Math.PI*2;
+  ctx.save(); ctx.translate(thx,thy); ctx.rotate(rot);
+  const head=Math.floor(arcTotal/STEP);
+  for(let k=0;k<16;k++){                        // 缠在外缘的胶带，随走过的距离转
     const r2=new Rng(head+k+7);
-    ctx.save(); ctx.rotate(a0);
+    ctx.save(); ctx.rotate(-roll.spin + k/16*Math.PI*2);
     ctx.fillStyle=r2.c(.5)?r2.pick(HUES):PAPER;
     ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,-0.185,0.185);
     ctx.ellipse(0,0,rx*.93,ry*.93,0,0.185,-0.185,true); ctx.closePath(); ctx.fill();
@@ -248,70 +251,84 @@ function roll(){
   ctx.fillStyle='#d9d7d1'; ctx.beginPath(); ctx.ellipse(0,0,rx*.50,ry*.50,0,0,7); ctx.fill();
   ctx.strokeStyle='rgba(0,0,0,.16)';
   ctx.beginPath(); ctx.ellipse(0,0,rx*.50,ry*.50,0,0,7); ctx.stroke();
-  ctx.fillStyle='#fbfaf7'; ctx.beginPath(); ctx.ellipse(0,0,rx*.29,ry*.29,0,0,7); ctx.fill();
+  ctx.fillStyle=PAPER; ctx.beginPath(); ctx.ellipse(0,0,rx*.29,ry*.29,0,0,7); ctx.fill();
   ctx.strokeStyle='rgba(0,0,0,.24)';
   ctx.beginPath(); ctx.ellipse(0,0,rx*.29,ry*.29,0,0,7); ctx.stroke();
-  ctx.restore();
+  ctx.restore(); ctx.restore();
 }
 
 /* ---------- 绘制 ---------- */
-const CH=13;                               // 分段：后画的压住先画的，交叉处的上下关系就出来了
+const SX=26, SY=32;                              // 影子偏移
 function draw(){
-  toPix();
   const g=ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#fbfbf9'); g.addColorStop(1,'#eaeae6');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-  toScene();
 
-  const SX=30, SY=36;                      // 影子：图形化的实影，不是柔影
+  const n=trail.length-1;
+  if(n<2){ return; }
+  const CH=Math.max(4, Math.ceil(n/22));          // 分段：后画的压住先画的
+
+  /* 影子 */
   ctx.save(); ctx.translate(SX,SY);
-  ctx.fillStyle='rgba(30,30,36,.16)';
-  for(let c=0;c<CH;c++) { ribbonChunk(Math.floor(c*N/CH), Math.floor((c+1)*N/CH)); ctx.fill(); }
-  ctx.beginPath(); ctx.ellipse(ROLL_X+16,ROLL_Y+6,ROLL_R*1.04,ROLL_R*0.84,-0.15,0,7); ctx.fill();
+  ctx.fillStyle='rgba(30,30,36,.15)';
+  for(let c=0;c<CH;c++){ ribbon(Math.floor(c*n/CH), Math.floor((c+1)*n/CH)); ctx.fill(); }
+  ctx.translate(roll.x+12, roll.y+4);
+  ctx.beginPath(); ctx.ellipse(0,0,ROLL_R*1.06,ROLL_R*0.84,-0.14,0,7); ctx.fill();
   ctx.restore();
 
+  /* 带子 + 印在上面的贴纸，从旧到新依次画 */
   for(let c=0;c<CH;c++){
-    const a=Math.floor(c*N/CH), b=Math.floor((c+1)*N/CH);
-    ctx.fillStyle=PAPER; ribbonChunk(a,b); ctx.fill();
+    const a=Math.floor(c*n/CH), b=Math.floor((c+1)*n/CH);
+    ctx.fillStyle=PAPER; ribbon(a,b); ctx.fill();
 
-    const sa=ARC[a], sb=ARC[b];
-    for(let k=Math.floor((sa+view.s)/STEP); k<=Math.ceil((sb+view.s)/STEP); k++){
-      const s=k*STEP-view.s;
+    const sa=trail[a].s, sb=trail[b].s;
+    for(let k=Math.floor(sa/STEP); k<=Math.ceil(sb/STEP); k++){
+      const s=k*STEP;
       if(s<sa||s>=sb) continue;
       const q=atArc(s), r=new Rng(k);
-      if(r.c(.13)) continue;               // 留白
-      const w=widthAt(q.i/N), ang=Math.atan2(q.tan[1],q.tan[0]);
-      ctx.save(); ctx.translate(q.p[0],q.p[1]); ctx.rotate(ang+r.r(-.12,.12));
-      sticker(ctx,k,w*r.r(.60,.76));
+      if(r.c(.13)) continue;                      // 留白
+      const ang=Math.atan2(q.ty,q.tx);
+      ctx.save(); ctx.translate(q.x,q.y); ctx.rotate(ang+r.r(-.12,.12));
+      sticker(ctx,k,TAPE_W*r.r(.60,.76));
       ctx.restore();
-      ctx.save(); ctx.translate(q.p[0],q.p[1]); ctx.rotate(ang);
+      ctx.save(); ctx.translate(q.x,q.y); ctx.rotate(ang);
       ctx.fillStyle='rgba(20,20,20,.6)';
-      ctx.font=`${w*.115}px ui-monospace,monospace`;
-      ctx.fillText(WORDS[((k%WORDS.length)+WORDS.length)%WORDS.length], -w*.44, -w*.40);
-      ctx.fillText('N°'+String(((k%1000)+1000)%1000).padStart(3,'0'), -w*.44, w*.47);
+      ctx.font=`${TAPE_W*.105}px ui-monospace,monospace`;
+      ctx.fillText(WORDS[k%WORDS.length], -TAPE_W*.44, -TAPE_W*.36);
+      ctx.fillText('N°'+String(k%1000).padStart(3,'0'), -TAPE_W*.44, TAPE_W*.44);
       ctx.restore();
     }
-    ctx.strokeStyle='rgba(20,20,20,.6)'; ctx.lineWidth=1.6; ribbonEdges(a,b);
+    ctx.strokeStyle='rgba(20,20,20,.6)'; ctx.lineWidth=1.6; ribbon(a,b,true);
   }
-  roll();
+
+  drawRoll();
 }
 
 /* ---------- 主循环 ---------- */
-let frames=0, fpsT=performance.now();
+let frames=0, fpsT=performance.now(), auto=0;
 function tick(now){
-  view.vel*=0.93;
-  if(!dragging && Math.abs(view.vel)<0.12) view.vel=1.15;   // 静止时自己慢慢抽
-  view.s+=view.vel;
-  if(view.s<0){ view.s=0; view.vel=0; }
+  /* 没碰鼠标时自己慢慢画，页面不至于死着 */
+  if(!hasMouse){
+    auto+=0.016;
+    roll.tx = W*0.5 + Math.cos(auto*0.7)*W*0.28;
+    roll.ty = H*0.46 + Math.sin(auto*1.15)*H*0.22;
+  }
+  const px=roll.x, py=roll.y;
+  roll.x += (roll.tx-roll.x)*0.14;               // 缓动：卷轴像被拖着走
+  roll.y += (roll.ty-roll.y)*0.14;
+  const moved=Math.hypot(roll.x-px, roll.y-py);
+  roll.spin += moved/ROLL_R;                     // 走多远转多少
+  pushPoint(roll.x, roll.y);                     // 走到哪印到哪
+
   draw();
 
   frames++;
   if(now-fpsT>500){ document.getElementById('fps').textContent=Math.round(frames*1000/(now-fpsT));
     frames=0; fpsT=now; }
-  const k=Math.floor(view.s/STEP);
+  const k=Math.floor(arcTotal/STEP);
   document.getElementById('cnt').textContent=String(k).padStart(3,'0');
-  document.getElementById('len').textContent=(view.s/STEP*0.08).toFixed(2);
-  document.getElementById('fill').style.width=((view.s/STEP)%12)/12*100+'%';
+  document.getElementById('len').textContent=(arcTotal/1200).toFixed(2);
+  document.getElementById('fill').style.width=(k%12)/12*100+'%';
   const w=WORDS[k%WORDS.length];
   document.getElementById('now').textContent='#'+String(k%100).padStart(2,'0')+'  '+w;
   document.getElementById('cardT').innerHTML=w.replace(' ','<br>')+'<small>OBJECT / 2026</small>';
