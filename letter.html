@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>破碎情书</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#f4f2f4;
+    font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+  #cv{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+  .hud{position:fixed;pointer-events:none;color:#9a7f8c;
+    letter-spacing:.16em;text-transform:uppercase;font-size:10px}
+  .tl{top:18px;left:20px;line-height:1.8}
+  .tl b{display:block;color:#c4546c;font-weight:700;letter-spacing:.2em}
+  .tr{top:18px;right:20px;text-align:right;line-height:1.9}
+  .tr i{font-style:normal;color:#5b5f9e}
+  .bl{bottom:18px;left:20px;line-height:1.9}
+  .br{bottom:18px;right:20px;text-align:right;opacity:.6}
+  kbd{font:inherit;border:1px solid rgba(154,127,140,.45);padding:1px 5px;border-radius:2px}
+  /* 窄屏下左右两条会撞在一起，右边那条收掉 */
+  @media (max-width:760px){ .br,.tr{display:none} }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud tl">
+  <b>破碎情书</b>
+  <div>A letter, shattered</div>
+</div>
+<div class="hud tr">
+  <div>SHARDS <i id="sn">2</i></div>
+  <div>SET <i id="st">0</i></div>
+</div>
+<div class="hud bl">
+  <div>在纸上按住拖动 就裂开</div>
+  <div><kbd>空格</kbd> 复原　<kbd>A</kbd> 全碎　<kbd>S</kbd> 存图</div>
+</div>
+<div class="hud br">Text reflows into every shard</div>
+
+<script>
+/* =====================================================================
+ * 破碎情书 —— 一封信被敲碎，字重新流进每一块碎片
+ *
+ * 关键不在「裂」，在「裂完之后」：
+ * 碎片里的字不是把原来那页裁开，而是整段文字重新流一遍 ——
+ * 每一行能放几个字，由碎片在那个高度上有多宽决定，放不下就从中间断开。
+ * 所以窄的碎片上只剩一两个字母竖着排，大的碎片上还是完整的句子。
+ * 这就是参照图里「同一句话在不同碎片上密度完全不一样」的来源。
+ *
+ * 碎法用递归切线：凸多边形被一条直线切开永远还是两个凸多边形，
+ * 于是「某一行有多宽」只要一次扫描线求交，不用处理多段区间。
+ * 切完两半各往法线方向推开一点，位移由父节点往下累加 ——
+ * 跟真的敲碎一块玻璃一样，越晚裂的缝越细。
+ * ===================================================================== */
+
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+
+let W=0, H=0, DPR=1;
+
+/* 纸、格子、红线、蓝字 —— 全部取自参照 */
+const BG    = '#f4f2f4';     // 纸外面
+const PAPER = '#fdf8fa';     // 碎片本身
+const GRID  = '#f9e8ef';     // 方格（跟纸只差一点点，密排才不会糊）
+const EDGE  = '#d2566e';     // 碎片的红边
+const TEXT  = '#4a51b0';     // 打字机的蓝
+const MARK  = '#6f63c8';     // 蓝色的箭头/毛刺
+
+const LETTER = (
+"My dearest, — I have started this letter eleven times and each time the "+
+"paper went cold before the sentence did. Today the rain came in sideways "+
+"and I thought of the winter you stood under the awning with both hands in "+
+"your sleeves, refusing to admit you were cold. I have kept the ticket stub. "+
+"I have kept the receipt from the noodle shop where you laughed so hard the "+
+"man at the next table turned around. These are not important things. They "+
+"are only the things that survived. "+
+"How is the light where you are? Here it arrives late and leaves early, and "+
+"in between it lies across the floorboards like something asleep. I move the "+
+"chair so it falls on the chair. I move the cup so it falls on the cup. It is "+
+"a small occupation but it fills the hours between the post arriving and the "+
+"post not arriving. "+
+"If this reaches you torn, do not blame the distance. Blame me, who folded it "+
+"too many times, who could not decide which half to send first. Read it in any "+
+"order. It says the same thing everywhere. — Yours, still, and without any "+
+"particular hope of being answered, but yours."
+).replace(/\s+/g,' ');
+
+/* ---------- 随机 ---------- */
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15, 1|a);
+    t=t+Math.imul(t^t>>>7, 61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+let rnd = mulberry32(1);
+const rr = (a,b)=> a+(b-a)*rnd();
+
+/* ---------- 版面 ---------- */
+let PAGE, FS, LH, CW, PAD, GRIDPX, COLW, GUT;
+const CHARS = 42;                 // 一栏装多少个等宽字符，参照里差不多是这个数
+function layout(){
+  const m  = Math.min(W/0.70, H/1.00) * 0.86;   // 0.86 是纸四周的留白
+  const pw = m*0.70, ph = m*1.00;  // 接近 A4 的竖比例
+  PAGE = { x:(W-pw)/2, y:(H-ph)/2, w:pw, h:ph };
+  GUT  = pw*0.055;
+  COLW = (pw-GUT)/2;
+  /* 先量出「1px 字号时一个字符多宽」，再反推字号 —— 直接猜字号会让
+     每栏的字符数随屏幕乱跳，参照里那种整齐的灰度就没了 */
+  ctx.font = '100px "Courier New",Courier,ui-monospace,monospace';
+  const unit = ctx.measureText('MMMMMMMMMM').width/1000;
+  FS   = COLW*0.93/(CHARS*unit);
+  LH   = FS*1.42;
+  PAD  = FS*0.85;
+  CW   = FS*unit;
+  GRIDPX = Math.max(3.5, CW*0.34); // 一个字宽里放三格；低于 3.5 设备像素就看不见了
+  ctx.font = FS+'px "Courier New",Courier,ui-monospace,monospace';
+}
+
+/* ---------- 仿射变换 ----------
+ * 每块碎片存一个完整的矩阵，而不是「位移 + 绕自己质心转多少」。
+ * 后者有个陷阱：子块继承了父块的转角，却换了旋转中心，
+ * 一继承就整块跳位，碎片互相叠上去 —— 这个坑踩过一次。
+ */
+const IDENT = ()=>({a:1,b:0,c:0,d:1,e:0,f:0});
+function mul(P,Q){                 // 先做 Q 再做 P
+  return { a:P.a*Q.a+P.c*Q.b, b:P.b*Q.a+P.d*Q.b,
+           c:P.a*Q.c+P.c*Q.d, d:P.b*Q.c+P.d*Q.d,
+           e:P.a*Q.e+P.c*Q.f+P.e, f:P.b*Q.e+P.d*Q.f+P.f };
+}
+function apply(M,x,y){ return [M.a*x+M.c*y+M.e, M.b*x+M.d*y+M.f]; }
+function unapply(M,x,y){
+  const det=M.a*M.d-M.b*M.c, px=x-M.e, py=y-M.f;
+  return [(px*M.d-py*M.c)/det, (py*M.a-px*M.b)/det];
+}
+function translated(M,tx,ty){ return mul({a:1,b:0,c:0,d:1,e:tx,f:ty}, M); }
+function rotatedAbout(M, wx, wy, r){     // 绕「世界坐标里的某点」转，所以不会跳位
+  const c=Math.cos(r), si=Math.sin(r);
+  const R={ a:c, b:si, c:-si, d:c, e:wx-c*wx+si*wy, f:wy-si*wx-c*wy };
+  return mul(R, M);
+}
+
+/* ---------- 碎片 ---------- */
+let shards=[], setNo=0;
+
+function rect(x,y,w,h){ return [x,y, x+w,y, x+w,y+h, x,y+h]; }
+
+function reset(){
+  rnd = mulberry32((Math.random()*1e9)|0);
+  shards = [
+    mk(rect(PAGE.x,              PAGE.y, COLW, PAGE.h)),
+    mk(rect(PAGE.x+COLW+GUT,     PAGE.y, COLW, PAGE.h))
+  ];
+  setNo = 0;
+  refresh();
+}
+function mk(poly){
+  return { poly, M:IDENT(), lines:null, marks:[] };
+}
+
+function area(p){
+  let a=0;
+  for(let i=0;i<p.length;i+=2){
+    const j=(i+2)%p.length;
+    a += p[i]*p[j+1] - p[j]*p[i+1];
+  }
+  return Math.abs(a)/2;
+}
+function centroid(p){
+  let x=0,y=0;
+  for(let i=0;i<p.length;i+=2){ x+=p[i]; y+=p[i+1]; }
+  return [x/(p.length/2), y/(p.length/2)];
+}
+
+/* 一条直线把凸多边形切成两半。凸的切完还是凸的，
+   所以后面「某一行有多宽」永远只有一段区间，不用处理多段 */
+function cut(poly, px,py, ang){
+  const nx = -Math.sin(ang), ny = Math.cos(ang);
+  const sd = (x,y)=> (x-px)*nx + (y-py)*ny;
+  const A=[], B=[];
+  const n=poly.length;
+  for(let i=0;i<n;i+=2){
+    const j=(i+2)%n;
+    const ax=poly[i], ay=poly[i+1], bx=poly[j], by=poly[j+1];
+    const da=sd(ax,ay), db=sd(bx,by);
+    if(da<=0) A.push(ax,ay); else B.push(ax,ay);
+    if((da<=0)!==(db<=0)){
+      const t=da/(da-db);
+      const ix=ax+(bx-ax)*t, iy=ay+(by-ay)*t;
+      A.push(ix,iy); B.push(ix,iy);
+    }
+  }
+  if(A.length<6 || B.length<6) return null;
+  return [A, B, nx, ny];
+}
+
+/* 敲一下：把 (px,py) 落在的那块切开，两半各往法线方向推开一点 */
+function crackAt(px, py, ang){
+  let hit=-1;
+  for(let i=shards.length-1;i>=0;i--){
+    if(inside(shards[i], px, py)){ hit=i; break; }
+  }
+  if(hit<0) return false;
+  const s = shards[hit];
+  if(area(s.poly) < (LH*5)*(CW*5)) return false;    // 太小就不再碎了
+
+  /* 切线过局部坐标里的那个点 */
+  const [lx,ly] = unapply(s.M, px, py);
+  if(ang===undefined){
+    let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
+    for(let i=0;i<s.poly.length;i+=2){
+      if(s.poly[i]<mnx)mnx=s.poly[i]; if(s.poly[i]>mxx)mxx=s.poly[i];
+      if(s.poly[i+1]<mny)mny=s.poly[i+1]; if(s.poly[i+1]>mxy)mxy=s.poly[i+1];
+    }
+    ang = ((mxx-mnx) > (mxy-mny) ? Math.PI/2 : 0) + rr(-0.62, 0.62);
+  }
+  const c = cut(s.poly, lx, ly, ang);
+  if(!c) return false;
+  const [A,B,nx,ny] = c;
+
+  const g = Math.max(1.2, LH*0.42) * rr(0.6,1.4);     // 缝宽
+  const kids = [];
+  for(const [poly, sgn] of [[A,-1],[B,1]]){
+    /* 先原样继承父块的矩阵，再往法线方向推开，最后绕自己「当前所在位置」
+       微转一点。顺序反了就会跳位 */
+    let M = translated(s.M, nx*g*sgn, ny*g*sgn);
+    const [lcx,lcy] = centroid(poly);
+    const [wcx,wcy] = apply(M, lcx, lcy);
+    M = rotatedAbout(M, wcx, wcy, rr(-0.006,0.006));
+    kids.push({ poly, M, lines:null, marks:[] });
+  }
+  shards.splice(hit, 1, kids[0], kids[1]);
+
+  /* 偶尔在裂口上留一枚蓝色的毛刺箭头 */
+  if(rnd() < 0.55){
+    const t = kids[rnd()<0.5?0:1];
+    t.marks.push({ x:lx, y:ly, a:ang+Math.PI/2+rr(-0.5,0.5), L:rr(LH*1.8, LH*4.6), s:(rnd()*1e9)|0 });
+  }
+  setNo++;
+  return true;
+}
+function inside(s, x, y){
+  const [lx,ly] = unapply(s.M, x, y);
+  const p=s.poly, n=p.length;
+  let sign=0;
+  for(let i=0;i<n;i+=2){
+    const j=(i+2)%n;
+    const d=(p[j]-p[i])*(ly-p[i+1]) - (p[j+1]-p[i+1])*(lx-p[i]);
+    if(d>1e-9){ if(sign<0) return false; sign=1; }
+    else if(d<-1e-9){ if(sign>0) return false; sign=-1; }
+  }
+  return true;
+}
+/* ---------- 把整封信重新流进所有碎片 ----------
+ * 每一行能放几个字，由碎片在那个高度上有多宽决定。
+ * 放不下就从中间断开 —— 参照里那些断在词中间的行就是这么来的。
+ */
+function spanAt(poly, y){
+  let lo=Infinity, hi=-Infinity;
+  const n=poly.length;
+  for(let i=0;i<n;i+=2){
+    const j=(i+2)%n;
+    const ay=poly[i+1], by=poly[j+1];
+    if((ay<=y)===(by<=y)) continue;
+    const t=(y-ay)/(by-ay);
+    const x=poly[i]+(poly[j]-poly[i])*t;
+    if(x<lo) lo=x;
+    if(x>hi) hi=x;
+  }
+  return hi>lo ? [lo,hi] : null;
+}
+function refresh(){
+  /* 阅读顺序：先左栏从上到下，再右栏。按原始位置排，跟推开多少无关 */
+  const mid = PAGE.x + PAGE.w/2;
+  const ord = shards.map((s,i)=>{
+    const [cx,cy]=centroid(s.poly);
+    return { i, col: cx<mid?0:1, cy, cx };
+  }).sort((a,b)=> a.col-b.col || a.cy-b.cy || a.cx-b.cx);
+
+  let cur = 0;
+  for(const o of ord){
+    const s = shards[o.i];
+    const p = s.poly;
+    let minY=Infinity, maxY=-Infinity;
+    for(let i=1;i<p.length;i+=2){ if(p[i]<minY)minY=p[i]; if(p[i]>maxY)maxY=p[i]; }
+    const lines=[];
+    for(let y=minY+PAD+LH*0.78; y<maxY-PAD*0.4; y+=LH){
+      const sp = spanAt(p, y);
+      if(!sp) continue;
+      const x0=sp[0]+PAD, x1=sp[1]-PAD;
+      const n = Math.floor((x1-x0)/CW);
+      if(n<1) continue;
+      /* 一封信填不满整页时从头再接一遍 —— 正好是「反复重读」的意思，
+         也保证不会出现一整栏只有格子没有字的情况 */
+      let t = '';
+      for(let k=0;k<n;k++) t += LETTER[(cur+k) % LETTER.length];
+      cur += n;
+      lines.push({ x:(x0+x1)/2, y, t });
+    }
+    s.lines = lines;
+  }
+  document.getElementById('sn').textContent = shards.length;
+  document.getElementById('st').textContent = setNo;
+}
+
+/* ---------- 蓝色毛刺箭头 ---------- */
+function drawMark(m){
+  const r = mulberry32(m.s);
+  const tx = m.x + Math.cos(m.a)*m.L, ty = m.y + Math.sin(m.a)*m.L;
+  ctx.strokeStyle = MARK; ctx.lineWidth = Math.max(0.5, FS*0.045);
+  ctx.globalAlpha = 0.75;
+  ctx.beginPath(); ctx.moveTo(m.x,m.y); ctx.lineTo(tx,ty); ctx.stroke();
+  /* 箭头 */
+  for(const d of [-0.36, 0.36]){
+    ctx.beginPath(); ctx.moveTo(tx,ty);
+    ctx.lineTo(tx-Math.cos(m.a+d)*m.L*0.17, ty-Math.sin(m.a+d)*m.L*0.17);
+    ctx.stroke();
+  }
+  /* 尾巴上那一撮散开的毛 */
+  const back = m.a + Math.PI;
+  for(let i=0;i<14;i++){
+    const a = back + (r()-0.5)*1.25;
+    const l = m.L*(0.18+r()*0.42);
+    ctx.globalAlpha = 0.30 + r()*0.45;
+    ctx.beginPath(); ctx.moveTo(m.x,m.y);
+    ctx.quadraticCurveTo(m.x+Math.cos(a)*l*0.6 + (r()-0.5)*l*0.3,
+                         m.y+Math.sin(a)*l*0.6 + (r()-0.5)*l*0.3,
+                         m.x+Math.cos(a)*l, m.y+Math.sin(a)*l);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- 画 ---------- */
+function shardPath(s){
+  ctx.beginPath();
+  ctx.moveTo(s.poly[0], s.poly[1]);
+  for(let i=2;i<s.poly.length;i+=2) ctx.lineTo(s.poly[i], s.poly[i+1]);
+  ctx.closePath();
+}
+function draw(){
+  ctx.fillStyle=BG; ctx.fillRect(0,0,W,H);
+  ctx.font = FS+'px "Courier New",Courier,ui-monospace,monospace';
+  ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+
+  for(const s of shards){
+    ctx.save();
+    ctx.transform(s.M.a, s.M.b, s.M.c, s.M.d, s.M.e, s.M.f);
+
+    shardPath(s);
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle=PAPER; ctx.fill();
+
+    /* 方格按纸的原点排，所以碎片一推开，格子就对不上了 —— 参照里正是这样 */
+    ctx.strokeStyle=GRID; ctx.lineWidth=DPR*0.5;
+    ctx.beginPath();
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    for(let i=0;i<s.poly.length;i+=2){
+      if(s.poly[i]<minX)minX=s.poly[i]; if(s.poly[i]>maxX)maxX=s.poly[i];
+      if(s.poly[i+1]<minY)minY=s.poly[i+1]; if(s.poly[i+1]>maxY)maxY=s.poly[i+1];
+    }
+    const g0x=Math.floor((minX-PAGE.x)/GRIDPX)*GRIDPX+PAGE.x;
+    const g0y=Math.floor((minY-PAGE.y)/GRIDPX)*GRIDPX+PAGE.y;
+    for(let x=g0x;x<=maxX;x+=GRIDPX){ ctx.moveTo(x,minY); ctx.lineTo(x,maxY); }
+    for(let y=g0y;y<=maxY;y+=GRIDPX){ ctx.moveTo(minX,y); ctx.lineTo(maxX,y); }
+    ctx.stroke();
+
+    ctx.fillStyle=TEXT;
+    if(s.lines) for(const l of s.lines) ctx.fillText(l.t, l.x, l.y);
+
+    for(const m of s.marks) drawMark(m);
+    ctx.restore();
+
+    /* 必须重建一次路径：上面画格子时 beginPath 已经把轮廓冲掉了，
+       而 restore() 只还原状态、不还原当前路径 */
+    shardPath(s);
+    ctx.strokeStyle=EDGE; ctx.lineWidth=Math.max(0.7, DPR*0.85);
+    ctx.lineJoin='round'; ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* ---------- 交互 ---------- */
+let drag=false, lastCrack=0, idle=0;
+
+function hit(e){
+  const r=cv.getBoundingClientRect();
+  return [(e.clientX-r.left)*DPR, (e.clientY-r.top)*DPR];
+}
+cv.addEventListener('pointerdown', e=>{
+  drag=true; idle=0; cv.setPointerCapture(e.pointerId);
+  const [x,y]=hit(e);
+  if(crackAt(x,y)) refresh();
+  draw();
+});
+cv.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  idle=0;
+  const now=performance.now();
+  if(now-lastCrack < 110) return;       // 拖动时别每一帧都炸一次
+  lastCrack=now;
+  const [x,y]=hit(e);
+  if(crackAt(x,y)){ refresh(); draw(); }
+});
+const up=()=>{ drag=false; };
+cv.addEventListener('pointerup', up);
+cv.addEventListener('pointercancel', up);
+
+addEventListener('keydown', e=>{
+  if(e.code==='Space'){ e.preventDefault(); reset(); draw(); idle=0; }
+  else if(e.key==='a'||e.key==='A'){ shatter(26); idle=0; }
+  else if(e.key==='s'||e.key==='S'){ save(); }
+});
+function shatter(n){
+  for(let k=0;k<n;k++){
+    /* 按面积挑一块来炸，大的先碎 —— 不然会有一块一直不动 */
+    let best=-1, bw=-1;
+    for(let i=0;i<shards.length;i++){
+      const w = area(shards[i].poly) * rr(0.5,1.5);
+      if(w>bw){ bw=w; best=i; }
+    }
+    const s=shards[best];
+    const [lcx,lcy]=centroid(s.poly);
+    const [wx,wy]=apply(s.M, lcx, lcy);
+    crackAt(wx+rr(-1,1)*LH*2, wy+rr(-1,1)*LH*2);
+  }
+  refresh(); draw();
+}
+function save(){
+  cv.toBlob(b=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b);
+    a.download='letter-'+shards.length+'.png';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+}
+
+/* ---------- 起来 ---------- */
+function resize(){
+  DPR = Math.min(2, devicePixelRatio||1);
+  W = cv.width  = Math.round(innerWidth *DPR);
+  H = cv.height = Math.round(innerHeight*DPR);
+  cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px';
+  layout();
+  reset();
+  draw();
+}
+addEventListener('resize', resize);
+
+/* 没人动的时候自己慢慢裂，页面不至于是张死图 */
+function tick(){
+  if(!drag){
+    idle++;
+    if(idle > 150 && shards.length < 60 && idle % 26 === 0){
+      const s = shards[(rnd()*shards.length)|0];
+      const [lcx,lcy]=centroid(s.poly);
+      const [wx,wy]=apply(s.M, lcx, lcy);
+      if(crackAt(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3)){ refresh(); draw(); }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+resize();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
