@@ -99,7 +99,7 @@ let rnd = mulberry32(1);
 const rr = (a,b)=> a+(b-a)*rnd();
 
 /* ---------- 版面 ---------- */
-let PAGE, FS, LH, CW, PAD, GRIDPX, COLW, GUT;
+let PAGE, FS, LH, CW, PAD, GRIDPX, COLW, GUT, INSET;
 const CHARS = 42;                 // 一栏装多少个等宽字符，参照里差不多是这个数
 function layout(){
   const m  = Math.min(W/0.70, H/1.00) * 0.86;   // 0.86 是纸四周的留白
@@ -114,32 +114,10 @@ function layout(){
   FS   = COLW*0.93/(CHARS*unit);
   LH   = FS*1.42;
   PAD  = FS*0.85;
+  INSET= LH*0.20;                 // 每块往里收这么多，裂口的白槽就是 2×它
   CW   = FS*unit;
   GRIDPX = Math.max(3.5, CW*0.34); // 一个字宽里放三格；低于 3.5 设备像素就看不见了
   ctx.font = FS+'px "Courier New",Courier,ui-monospace,monospace';
-}
-
-/* ---------- 仿射变换 ----------
- * 每块碎片存一个完整的矩阵，而不是「位移 + 绕自己质心转多少」。
- * 后者有个陷阱：子块继承了父块的转角，却换了旋转中心，
- * 一继承就整块跳位，碎片互相叠上去 —— 这个坑踩过一次。
- */
-const IDENT = ()=>({a:1,b:0,c:0,d:1,e:0,f:0});
-function mul(P,Q){                 // 先做 Q 再做 P
-  return { a:P.a*Q.a+P.c*Q.b, b:P.b*Q.a+P.d*Q.b,
-           c:P.a*Q.c+P.c*Q.d, d:P.b*Q.c+P.d*Q.d,
-           e:P.a*Q.e+P.c*Q.f+P.e, f:P.b*Q.e+P.d*Q.f+P.f };
-}
-function apply(M,x,y){ return [M.a*x+M.c*y+M.e, M.b*x+M.d*y+M.f]; }
-function unapply(M,x,y){
-  const det=M.a*M.d-M.b*M.c, px=x-M.e, py=y-M.f;
-  return [(px*M.d-py*M.c)/det, (py*M.a-px*M.b)/det];
-}
-function translated(M,tx,ty){ return mul({a:1,b:0,c:0,d:1,e:tx,f:ty}, M); }
-function rotatedAbout(M, wx, wy, r){     // 绕「世界坐标里的某点」转，所以不会跳位
-  const c=Math.cos(r), si=Math.sin(r);
-  const R={ a:c, b:si, c:-si, d:c, e:wx-c*wx+si*wy, f:wy-si*wx-c*wy };
-  return mul(R, M);
 }
 
 /* ---------- 碎片 ---------- */
@@ -156,8 +134,47 @@ function reset(){
   setNo = 0;
   refresh();
 }
+/* poly 直接是屏幕坐标。ox,oy 是这块纸被挪走了多少 ——
+   只用来偏移方格底纹，不参与旋转，所以格子永远是正的 */
 function mk(poly){
-  return { poly, M:IDENT(), lines:null, marks:[] };
+  return { poly, ox:0, oy:0, lines:null, marks:[] };
+}
+/* 凸多边形整体往里收 e：逐边内移再求相邻边交点 */
+function insetConvex(poly, e){
+  const n=poly.length/2;
+  if(n<3) return poly;
+  let cx=0, cy=0;
+  for(let i=0;i<n;i++){ cx+=poly[i*2]; cy+=poly[i*2+1]; }
+  cx/=n; cy/=n;
+  const L=[];
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    const ax=poly[i*2], ay=poly[i*2+1], bx=poly[j*2], by=poly[j*2+1];
+    let ex=bx-ax, ey=by-ay;
+    const d=Math.hypot(ex,ey); if(d<1e-6) return poly;
+    ex/=d; ey/=d;
+    let nx=ey, ny=-ex;                        // 边的法线
+    if((cx-ax)*nx + (cy-ay)*ny < 0){ nx=-nx; ny=-ny; }   // 指向质心才是「内」
+    L.push([ax+nx*e, ay+ny*e, ex, ey]);
+  }
+  const out=[];
+  for(let i=0;i<n;i++){
+    const a=L[i], b=L[(i+1)%n];
+    const den=a[2]*b[3]-a[3]*b[2];
+    if(Math.abs(den)<1e-9) return poly;       // 两边几乎平行，收不动就算了
+    const t=((b[0]-a[0])*b[3]-(b[1]-a[1])*b[2])/den;
+    out.push(a[0]+a[2]*t, a[1]+a[3]*t);
+  }
+  /* 收过头会自交。粗判一下：还得有面积 */
+  return area(out) > area(poly)*0.15 ? out : poly;
+}
+function rotateVerts(poly, cx, cy, r){
+  const c=Math.cos(r), si=Math.sin(r);
+  for(let i=0;i<poly.length;i+=2){
+    const x=poly[i]-cx, y=poly[i+1]-cy;
+    poly[i]   = cx + x*c - y*si;
+    poly[i+1] = cy + x*si + y*c;
+  }
 }
 
 function area(p){
@@ -206,8 +223,7 @@ function crackAt(px, py, ang){
   const s = shards[hit];
   if(area(s.poly) < (LH*5)*(CW*5)) return false;    // 太小就不再碎了
 
-  /* 切线过局部坐标里的那个点 */
-  const [lx,ly] = unapply(s.M, px, py);
+  const lx = px, ly = py;
   if(ang===undefined){
     let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
     for(let i=0;i<s.poly.length;i+=2){
@@ -220,16 +236,24 @@ function crackAt(px, py, ang){
   if(!c) return false;
   const [A,B,nx,ny] = c;
 
-  const g = Math.max(1.2, LH*0.42) * rr(0.6,1.4);     // 缝宽
+  const g = Math.max(0.6, LH*0.16) * rr(0.4,1.4);     // 只是让碎片散开一点
   const kids = [];
-  for(const [poly, sgn] of [[A,-1],[B,1]]){
-    /* 先原样继承父块的矩阵，再往法线方向推开，最后绕自己「当前所在位置」
-       微转一点。顺序反了就会跳位 */
-    let M = translated(s.M, nx*g*sgn, ny*g*sgn);
-    const [lcx,lcy] = centroid(poly);
-    const [wcx,wcy] = apply(M, lcx, lcy);
-    M = rotatedAbout(M, wcx, wcy, rr(-0.006,0.006));
-    kids.push({ poly, M, lines:null, marks:[] });
+  for(const [poly0, sgn] of [[A,-1],[B,1]]){
+    /* 先整体挪开一点（这一步只是让碎片看着散开），
+       再绕自己的质心转 —— 转的是轮廓，不是里面的内容，
+       最后统一往里收 INSET。收的量比转角带来的端点位移大，
+       所以不管是哪一代的缝，都不会被后来的旋转吃掉 */
+    let poly = poly0;
+    for(let i=0;i<poly.length;i+=2){ poly[i]+=nx*g*sgn; poly[i+1]+=ny*g*sgn; }
+    const [cx,cy]=centroid(poly);
+    let dmax=1;
+    for(let i=0;i<poly.length;i+=2){
+      const d=Math.hypot(poly[i]-cx, poly[i+1]-cy);
+      if(d>dmax) dmax=d;
+    }
+    rotateVerts(poly, cx, cy, rr(-1,1)*INSET*0.55/dmax);  // 端点最多扫过 0.55 个 INSET
+    poly = insetConvex(poly, INSET);
+    kids.push({ poly, ox:s.ox+nx*g*sgn, oy:s.oy+ny*g*sgn, lines:null, marks:[] });
   }
   shards.splice(hit, 1, kids[0], kids[1]);
 
@@ -242,7 +266,7 @@ function crackAt(px, py, ang){
   return true;
 }
 function inside(s, x, y){
-  const [lx,ly] = unapply(s.M, x, y);
+  const lx=x, ly=y;
   const p=s.poly, n=p.length;
   let sign=0;
   for(let i=0;i<n;i+=2){
@@ -346,9 +370,8 @@ function draw(){
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
 
   for(const s of shards){
-    ctx.save();
-    ctx.transform(s.M.a, s.M.b, s.M.c, s.M.d, s.M.e, s.M.f);
-
+    /* 没有 ctx.transform —— 碎片只是个窗口，纸纹和字都画在屏幕坐标里，
+       所以碎片转了，格子还是正的、字还是横的（参照就是这样） */
     shardPath(s);
     ctx.save();
     ctx.clip();
@@ -362,8 +385,9 @@ function draw(){
       if(s.poly[i]<minX)minX=s.poly[i]; if(s.poly[i]>maxX)maxX=s.poly[i];
       if(s.poly[i+1]<minY)minY=s.poly[i+1]; if(s.poly[i+1]>maxY)maxY=s.poly[i+1];
     }
-    const g0x=Math.floor((minX-PAGE.x)/GRIDPX)*GRIDPX+PAGE.x;
-    const g0y=Math.floor((minY-PAGE.y)/GRIDPX)*GRIDPX+PAGE.y;
+    const ax=PAGE.x+s.ox, ay=PAGE.y+s.oy;      // 纸纹跟着这块纸挪，但不转
+    const g0x=Math.floor((minX-ax)/GRIDPX)*GRIDPX+ax;
+    const g0y=Math.floor((minY-ay)/GRIDPX)*GRIDPX+ay;
     for(let x=g0x;x<=maxX;x+=GRIDPX){ ctx.moveTo(x,minY); ctx.lineTo(x,maxY); }
     for(let y=g0y;y<=maxY;y+=GRIDPX){ ctx.moveTo(minX,y); ctx.lineTo(maxX,y); }
     ctx.stroke();
@@ -372,14 +396,13 @@ function draw(){
     if(s.lines) for(const l of s.lines) ctx.fillText(l.t, l.x, l.y);
 
     for(const m of s.marks) drawMark(m);
-    ctx.restore();
+    ctx.restore();   // 解除裁剪
 
     /* 必须重建一次路径：上面画格子时 beginPath 已经把轮廓冲掉了，
        而 restore() 只还原状态、不还原当前路径 */
     shardPath(s);
     ctx.strokeStyle=EDGE; ctx.lineWidth=Math.max(0.7, DPR*0.85);
     ctx.lineJoin='round'; ctx.stroke();
-    ctx.restore();
   }
 }
 
@@ -423,8 +446,7 @@ function shatter(n){
       if(w>bw){ bw=w; best=i; }
     }
     const s=shards[best];
-    const [lcx,lcy]=centroid(s.poly);
-    const [wx,wy]=apply(s.M, lcx, lcy);
+    const [wx,wy]=centroid(s.poly);
     crackAt(wx+rr(-1,1)*LH*2, wy+rr(-1,1)*LH*2);
   }
   refresh(); draw();
@@ -457,8 +479,7 @@ function tick(){
     idle++;
     if(idle > 150 && shards.length < 60 && idle % 26 === 0){
       const s = shards[(rnd()*shards.length)|0];
-      const [lcx,lcy]=centroid(s.poly);
-      const [wx,wy]=apply(s.M, lcx, lcy);
+      const [wx,wy]=centroid(s.poly);
       if(crackAt(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3)){ refresh(); draw(); }
     }
   }
