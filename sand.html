@@ -17,6 +17,8 @@
   .bl{bottom:22px;left:22px;line-height:1.9}
   .br{bottom:22px;right:22px;text-align:right;opacity:.5}
   kbd{font:inherit;border:1px solid rgba(74,58,34,.4);padding:1px 5px;border-radius:2px}
+  /* 窄屏下左右两条说明会撞在一起，右边那条收掉 */
+  @media (max-width:760px){ .br{display:none} .tr b{min-width:40px} }
 </style>
 </head>
 <body>
