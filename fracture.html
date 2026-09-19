@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>撕裂</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#050505;
+    font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+  #cv{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+  .hud{position:fixed;pointer-events:none;color:#8d9090;mix-blend-mode:difference;
+    letter-spacing:.16em;text-transform:uppercase;font-size:10px}
+  .tl{top:18px;left:20px;line-height:1.8}
+  .tl b{display:block;color:#d4d6d6;font-weight:700;letter-spacing:.2em}
+  .tr{top:18px;right:20px;text-align:right;line-height:1.9}
+  .tr i{font-style:normal;color:#d4d6d6}
+  .bl{bottom:18px;left:20px;line-height:1.9}
+  .br{bottom:18px;right:20px;text-align:right;opacity:.55}
+  kbd{font:inherit;border:1px solid rgba(141,144,144,.4);padding:1px 5px;border-radius:2px}
+  /* 窄屏下左右两条会撞在一起，右边那条收掉 */
+  @media (max-width:720px){ .br,.tr{display:none} }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud tl">
+  <b>Fracture &amp; Connection</b>
+  <div>撕裂 与 连接</div>
+</div>
+<div class="hud tr">
+  <div>GLYPH <i id="gl">–</i></div>
+  <div>OPEN <i id="op">0.00</i></div>
+  <div>CELLS <i id="cc">0</i></div>
+</div>
+<div class="hud bl">
+  <div>按住拖动 撕开字</div>
+  <div><kbd>空格</kbd> 下一个字　<kbd>S</kbd> 存图</div>
+</div>
+<div class="hud br">A study in stretched films</div>
+
+<script>
+/* =====================================================================
+ * 撕裂 —— 把字撕开，断口拉出一层薄膜
+ *
+ * 看上去是流体，其实是三层叠出来的：
+ *   1) 一条穿过整屏的「撕口」中线（几条正弦叠加，所以是波浪不是直线）
+ *   2) 撕口的半宽由「这一段压到多少字」决定 —— 只有字的白面能被拉扯，
+ *      走到黑底上薄膜就收成一根线。这一条是整个效果的关键。
+ *   3) 断口里铺一层 Voronoi 泡沫：每个胞腔挖成黑洞、描一圈高光，
+ *      相邻两圈高光中间留下的暗条就是液膜的丝。
+ *
+ * 胞腔的大小跟着半宽走，所以宽的地方是一团泡、窄的地方自动拉成长丝，
+ * 不需要为「丝」和「泡」写两套代码。
+ * ===================================================================== */
+
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+
+let W=0, H=0, DPR=1;
+
+const INK   = '#d4d6d6';      // 字的浅灰
+const BG    = '#050505';
+const FILM  = '#1c1c20';      // 断口里薄膜的底色（不能是纯黑，见下）
+const RIM   = '#f2f4f4';      // 胞腔边缘的高光
+
+const WORD  = 'FRACTURE';
+let   wi    = 0;
+
+/* ---------- 随机 ---------- */
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15, 1|a);
+    t=t+Math.imul(t^t>>>7, 61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+let rnd = mulberry32(1);
+
+/* ---------- 字的遮罩 ----------
+ * 不是用来裁剪的，是用来问「撕口这一段底下有多少字」。
+ * 薄膜只能从字的实心部分拉出来，这就是宽窄变化的来源。
+ */
+const mask = document.createElement('canvas');
+const mctx = mask.getContext('2d', { willReadFrequently:true });
+let mdata=null, MW=0, MH=0;
+const MSCALE = 0.25;           // 遮罩只要四分之一分辨率，够用且省
+
+function buildMask(){
+  MW = Math.max(1, Math.round(W*MSCALE));
+  MH = Math.max(1, Math.round(H*MSCALE));
+  mask.width=MW; mask.height=MH;
+  mctx.clearRect(0,0,MW,MH);
+  mctx.fillStyle='#fff';
+  drawGlyph(mctx, MW, MH);
+  mdata = mctx.getImageData(0,0,MW,MH).data;
+}
+function drawGlyph(g, w, h, zs){
+  /* 字压满画面并出血，参照里每个字都是被裁着的 */
+  const size = Math.min(h*1.34, w*1.55)*(zs||1);
+  g.font = '700 '+size+'px "Helvetica Neue",Helvetica,Arial,"Segoe UI",sans-serif';
+  g.textAlign='center'; g.textBaseline='alphabetic';
+  g.fillText(WORD[wi], w*0.5, h*0.5 + size*0.36);
+}
+/* 屏幕坐标 → 该点是不是字。
+   遮罩是按 zs=1 烤的，所以这里把点先反缩放回去，字推近时不用重烤遮罩 */
+let zoom=1;
+function cover(x, y){
+  const bx = (x-W*0.5)/zoom + W*0.5;
+  const by = (y-H*0.5)/zoom + H*0.5;
+  const mx = bx*MSCALE|0, my = by*MSCALE|0;
+  if(mx<0||my<0||mx>=MW||my>=MH) return 0;
+  return mdata[(my*MW+mx)*4+3] > 100 ? 1 : 0;
+}
+
+/* ---------- 撕口 ---------- */
+const SAMP = 190;               // 沿撕口方向的采样数
+let tear = null;
+
+function newTear(seed, ang, px, py){
+  rnd = mulberry32(seed>>>0);
+  return {
+    ang, px, py,
+    /* 三条不同频率的正弦叠出波浪。只用一条会太规整，像剪刀剪的 */
+    waves: [
+      { k: 1.1+rnd()*1.0, a: 0.055+rnd()*0.055, p: rnd()*6.28 },
+      { k: 2.7+rnd()*1.8, a: 0.026+rnd()*0.030, p: rnd()*6.28 },
+      { k: 6.1+rnd()*3.4, a: 0.008+rnd()*0.013, p: rnd()*6.28 }
+    ],
+    /* 半宽的粗糙度：撕口不会两边平行 */
+    rough: [
+      { k: 2.3+rnd()*2.0, a: 0.17, p: rnd()*6.28 },
+      { k: 5.9+rnd()*3.0, a: 0.11, p: rnd()*6.28 },
+      { k:13.0+rnd()*6.0, a: 0.075,p: rnd()*6.28 },
+      { k:24.0+rnd()*9.0, a: 0.050,p: rnd()*6.28 },
+      { k:41.0+rnd()*14., a: 0.032,p: rnd()*6.28 }
+    ],
+    cseed: (rnd()*1e9)|0
+  };
+}
+
+/* 沿撕口采样：中线点、法线、半宽 */
+function sampleTear(T, open){
+  const L   = Math.hypot(W,H)*0.62;
+  const ax  = Math.cos(T.ang), ay = Math.sin(T.ang);
+  const nx  = -ay,             ny = ax;
+  const R   = Math.min(W,H)*0.115;         // 全开时的最大半宽
+  const out = [];
+  for(let i=0;i<SAMP;i++){
+    const s = i/(SAMP-1);
+    const t = (s*2-1)*L;
+    let wv=0;
+    for(const w of T.waves) wv += Math.sin(s*w.k*6.283 + w.p) * w.a;
+    const cxp = T.px + ax*t + nx*wv*L;
+    const cyp = T.py + ay*t + ny*wv*L;
+
+    /* 半宽 ∝ 这一段压住的字量。沿法线取一小段高斯加权的平均：
+       单点采样会被字的边缘抖成锯齿，窗口开太大又会把隔壁笔画算进来 */
+    let cv=0, wt=0;
+    for(let q=-5;q<=5;q++){
+      const gw = Math.exp(-q*q*0.16);
+      cv += cover(cxp + nx*q*R*0.09, cyp + ny*q*R*0.09) * gw; wt += gw;
+    }
+    cv /= wt;
+
+    let rg=1;
+    for(const w of T.rough) rg += Math.sin(s*w.k*6.283 + w.p) * w.a;
+
+    /* 两端收口，不然撕口会齐刷刷地切到画面边缘 */
+    const taper = Math.min(1, Math.pow(Math.sin(Math.PI*s), 0.35));
+
+    const hw = open * R * (0.030 + 0.970*cv*cv) * Math.max(0.12, rg) * taper;
+    out.push({ x:cxp, y:cyp, nx, ny, ax, ay, hw, s });
+  }
+  /* 半宽再沿程抹两遍。不抹的话断口边缘是一级级的台阶，
+     参照里那种圆钝的破口全靠这一步 */
+  for(let pass=0; pass<2; pass++){
+    const prev = out.map(o=>o.hw);
+    for(let i=0;i<out.length;i++){
+      let a=0, w=0;
+      for(let q=-2;q<=2;q++){
+        const j=i+q; if(j<0||j>=out.length) continue;
+        const gw=Math.exp(-q*q*0.55); a+=prev[j]*gw; w+=gw;
+      }
+      out[i].hw = a/w;
+    }
+  }
+  return out;
+}
+
+/* ---------- 断口的轮廓 ---------- */
+function bandPath(sm){
+  ctx.beginPath();
+  ctx.moveTo(sm[0].x + sm[0].nx*sm[0].hw, sm[0].y + sm[0].ny*sm[0].hw);
+  for(let i=1;i<sm.length;i++) ctx.lineTo(sm[i].x + sm[i].nx*sm[i].hw, sm[i].y + sm[i].ny*sm[i].hw);
+  for(let i=sm.length-1;i>=0;i--) ctx.lineTo(sm[i].x - sm[i].nx*sm[i].hw, sm[i].y - sm[i].ny*sm[i].hw);
+  ctx.closePath();
+}
+
+/* ---------- 泡沫 ----------
+ * 在断口里撒点，做 Voronoi，每个胞腔往里缩一圈再抹圆。
+ * 行数跟着半宽走：宽的地方好几行 → 一团泡；
+ * 窄的地方只剩一行 → 胞腔自动被压成又长又扁的丝。
+ */
+/* 一张沿撕口方向的平滑噪声，用来决定「这一段是细密的小泡还是几个大洞」。
+   真实的膜就是这样：有的地方还没破透，有的地方已经并成一个大腔。 */
+function fizz(u){
+  let v=0;
+  for(const f of FIZZ) v += Math.sin(u*f.k + f.p)*f.a;
+  return 0.5 + 0.5*Math.max(-1, Math.min(1, v));
+}
+let FIZZ=[];
+function reFizz(r){
+  FIZZ = [
+    { k: 7.0+r()*5,  a:0.62, p:r()*6.28 },
+    { k:17.0+r()*9,  a:0.30, p:r()*6.28 },
+    { k:34.0+r()*16, a:0.16, p:r()*6.28 }
+  ];
+}
+
+function seedCells(sm, CELL){
+  rnd = mulberry32(tear.cseed);
+  reFizz(rnd);
+  const pts=[];
+  /* 撒两遍：一遍中等尺度铺底，一遍细的只落在噪声高的地方。
+     真实的膜就是这样 —— 大腔旁边黏着一撮细密的小泡，不是一张均匀的网 */
+  for(const [scale, gate] of [[1.00, 0.00], [0.46, 2.9]]){
+    let acc = 1e9;
+    for(let i=1;i<sm.length;i++){
+      const s = sm[i];
+      acc += Math.hypot(s.x-sm[i-1].x, s.y-sm[i-1].y);
+      if(s.hw < 0.7) continue;
+      const unit = CELL*scale;
+      /* 越薄的地方胞腔越该被拉长。步长跟厚度反着走，
+         薄到极限时就只剩几根横贯的长丝 —— 参照里那一段就是这么来的 */
+      const aspect = Math.max(1, Math.min(5.5, unit*1.25/Math.max(1, s.hw)));
+      const step = Math.max(unit*0.5, Math.min(unit*2.4, s.hw*0.62)) * aspect;
+      if(acc < step) continue;
+      acc = 0;
+      const f = fizz(s.s*6.283);
+      if(gate > 0 && rnd() > Math.pow(f, gate)) continue;   // 细的那遍只在局部落下
+      const rows = Math.max(1, Math.round(s.hw*2/(unit*0.95)));
+      const keep = gate>0 ? 1 : (0.34 + 0.66*Math.pow(f, 1.5));
+      for(let r=0;r<rows;r++){
+        if(rows>1 && rnd() > keep) continue;
+        const w  = (-1 + (r*2+1)/rows) * s.hw * 0.92 + (rnd()-0.5)*s.hw*0.70/rows;
+        const jt = (rnd()-0.5)*step*0.85;
+        pts.push(s.x + s.nx*w + s.ax*jt, s.y + s.ny*w + s.ay*jt);
+      }
+    }
+  }
+  return pts;
+}
+
+/* 半平面裁剪：留下离 p 比离 q 近的那一半 */
+function clipHalf(poly, px,py, qx,qy){
+  const mx=(px+qx)*0.5, my=(py+qy)*0.5, dx=qx-px, dy=qy-py;
+  const out=[];
+  const n=poly.length;
+  for(let i=0;i<n;i+=2){
+    const j=(i+2)%n;
+    const axp=poly[i], ayp=poly[i+1], bxp=poly[j], byp=poly[j+1];
+    const da=(axp-mx)*dx+(ayp-my)*dy;
+    const db=(bxp-mx)*dx+(byp-my)*dy;
+    if(da<=0) out.push(axp,ayp);
+    if((da<=0)!==(db<=0)){
+      const t=da/(da-db);
+      out.push(axp+(bxp-axp)*t, ayp+(byp-ayp)*t);
+    }
+  }
+  return out;
+}
+
+/* 把多边形往里缩 g（Voronoi 胞腔一定是凸的，逐边内移再求交即可） */
+function inset(poly, g){
+  const n=poly.length/2;
+  if(n<3) return null;
+  const lines=[];
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    const ax=poly[i*2], ay=poly[i*2+1], bx=poly[j*2], by=poly[j*2+1];
+    let ex=bx-ax, ey=by-ay;
+    const L=Math.hypot(ex,ey); if(L<1e-6) return null;
+    ex/=L; ey/=L;
+    /* 多边形是逆时针还是顺时针不定，用「指向质心」来定内法线 */
+    lines.push([ax + ey*g, ay - ex*g, ex, ey]);
+  }
+  let cx=0, cy=0;
+  for(let i=0;i<n;i++){ cx+=poly[i*2]; cy+=poly[i*2+1]; }
+  cx/=n; cy/=n;
+  /* 若内法线取反了，整体翻一次 */
+  const p0=lines[0];
+  if((cx-p0[0])*p0[3] - (cy-p0[1])*p0[2] < 0){
+    for(const l of lines){ l[0]-= l[3]*g*2; l[1]+= l[2]*g*2; }
+  }
+  const out=[];
+  for(let i=0;i<n;i++){
+    const a=lines[i], b=lines[(i+1)%n];
+    const den = a[2]*b[3] - a[3]*b[2];
+    if(Math.abs(den)<1e-9) return null;
+    const t = ((b[0]-a[0])*b[3] - (b[1]-a[1])*b[2]) / den;
+    out.push(a[0]+a[2]*t, a[1]+a[3]*t);
+  }
+  /* 缩过头会自交，用「还在原质心附近」粗略判一下 */
+  let ok=false;
+  for(let i=0;i<n;i++){
+    if(Math.hypot(out[i*2]-cx, out[i*2+1]-cy) > g*0.4){ ok=true; break; }
+  }
+  return ok ? out : null;
+}
+
+/* 用「顶点当控制点、边中点当锚点」画出来，角自然是圆的 —— 泡沫没有尖角 */
+function smoothPath(p, bulge, cap){
+  const n=p.length/2;
+  let cx=0, cy=0;
+  for(let i=0;i<n;i++){ cx+=p[i*2]; cy+=p[i*2+1]; }
+  cx/=n; cy/=n;
+  /* 锚点取边中点、再沿「离开质心」的方向推出去一点 —— 边就鼓成弧了 */
+  const mid=(i,j)=>{
+    const ex=(p[i*2]+p[j*2])*0.5, ey=(p[i*2+1]+p[j*2+1])*0.5;
+    let dx=(ex-cx)*bulge, dy=(ey-cy)*bulge;
+    const d=Math.hypot(dx,dy);
+    if(d>cap){ dx=dx/d*cap; dy=dy/d*cap; }
+    return [ex+dx, ey+dy];
+  };
+  const m0=mid(n-1,0);
+  ctx.beginPath();
+  ctx.moveTo(m0[0],m0[1]);
+  for(let i=0;i<n;i++){
+    const m=mid(i,(i+1)%n);
+    ctx.quadraticCurveTo(p[i*2], p[i*2+1], m[0], m[1]);
+  }
+  ctx.closePath();
+}
+
+let cellCount=0;
+function drawFoam(sm, open){
+  const CELL = Math.min(W,H)*0.034 * (0.70 + 0.58*open);
+  const pts  = seedCells(sm, CELL);
+  const N    = pts.length/2;
+  cellCount  = 0;
+  if(!N) return;
+
+  /* 找邻居用的网格，不然是 O(N²) */
+  const GS = CELL*2.0;
+  const grid = new Map();
+  const key=(gx,gy)=>gx*100003+gy;
+  for(let i=0;i<N;i++){
+    const gx=(pts[i*2]/GS)|0, gy=(pts[i*2+1]/GS)|0;
+    const k=key(gx,gy);
+    let a=grid.get(k); if(!a){ a=[]; grid.set(k,a); }
+    a.push(i);
+  }
+
+  const S = CELL*2.4;
+  const g = Math.max(1.2, CELL*0.135*(1.20-0.40*open));   // 膜丝的半厚，越拉越薄
+
+  ctx.lineJoin='round';
+  for(let i=0;i<N;i++){
+    const px=pts[i*2], py=pts[i*2+1];
+    let poly=[px-S,py-S, px+S,py-S, px+S,py+S, px-S,py+S];
+    const gx=(px/GS)|0, gy=(py/GS)|0;
+    for(let dx=-2;dx<=2;dx++) for(let dy=-2;dy<=2;dy++){
+      const a=grid.get(key(gx+dx,gy+dy)); if(!a) continue;
+      for(const j of a){
+        if(j===i) continue;
+        poly = clipHalf(poly, px,py, pts[j*2],pts[j*2+1]);
+        if(poly.length<6) break;
+      }
+      if(poly.length<6) break;
+    }
+    if(poly.length<6) continue;
+    const ins = inset(poly, g);
+    if(!ins) continue;
+
+    smoothPath(ins, 0.16, g*1.1);
+    ctx.fillStyle = BG; ctx.fill();                 // 胞腔是穿透的洞
+    const br = 0.58 + 0.42*fizz(px*0.021 + py*0.017);
+    ctx.strokeStyle = 'rgba(242,244,244,'+br.toFixed(3)+')';
+    ctx.lineWidth = Math.max(0.8, g*0.52);
+    ctx.stroke();                                   // 洞沿的高光
+    cellCount++;
+  }
+}
+
+/* ---------- 主绘制 ---------- */
+let open=0, target=0;
+
+function draw(){
+  ctx.fillStyle=BG; ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle=INK;
+  ctx.save();
+  ctx.translate(W*0.5, H*0.5); ctx.scale(zoom, zoom); ctx.translate(-W*0.5, -H*0.5);
+  drawGlyph(ctx, W, H, 1);
+  ctx.restore();
+
+  if(open > 0.004){
+    const sm = sampleTear(tear, open);
+
+    /* 断口本体：先铺暗底，再沿边缘描几道由亮到暗的粗线，
+       做出「白 → 灰 → 黑」那段薄膜变薄的过渡 */
+    bandPath(sm);
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle=FILM; ctx.fillRect(0,0,W,H);
+    bandPath(sm);
+    const gg = Math.min(W,H)*0.030*open;
+    for(const [lw,al] of [[gg*2.4,0.08],[gg*1.5,0.11],[gg*0.85,0.15],[gg*0.42,0.21],[gg*0.18,0.30]]){
+      ctx.strokeStyle='rgba(196,199,199,'+al+')';
+      ctx.lineWidth=Math.max(1,lw); ctx.lineJoin='round'; ctx.stroke();
+    }
+    drawFoam(sm, open);
+    ctx.restore();
+
+    /* 断口的轮廓本身就是一根液丝。薄到极限时上下两条边贴在一起，
+       参照里那几根横贯画面的长丝就是这么来的，不需要另外画「丝」 */
+    bandPath(sm);
+    ctx.strokeStyle='rgba(242,244,244,0.78)';
+    ctx.lineWidth=Math.max(0.9, Math.min(W,H)*0.0016);
+    ctx.lineJoin='round'; ctx.stroke();
+  }
+
+  document.getElementById('op').textContent = open.toFixed(2);
+  document.getElementById('cc').textContent = cellCount;
+}
+
+/* ---------- 交互 ----------
+ * 按住拖：撕口垂直于拖的方向，拉得越远开得越大。松手自己愈合。
+ */
+let drag=false, ax0=0, ay0=0, auto=true, autoT=0;
+
+function setGlyph(i){
+  wi = ((i % WORD.length) + WORD.length) % WORD.length;
+  document.getElementById('gl').textContent = WORD[wi];
+  buildMask();
+}
+
+cv.addEventListener('pointerdown', e=>{
+  drag=true; auto=false; ax0=e.clientX; ay0=e.clientY;
+  tear = newTear((Math.random()*1e9)|0, 0, ax0*DPR, ay0*DPR); zt=0;
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  const dx=e.clientX-ax0, dy=e.clientY-ay0;
+  const d = Math.hypot(dx,dy);
+  if(d > 3) tear.ang = Math.atan2(dy,dx) + Math.PI/2;   // 撕口垂直于拖动方向
+  target = Math.min(1, d / (Math.min(innerWidth,innerHeight)*0.34));
+});
+function up(){
+  if(!drag) return;
+  drag=false; target=0;
+  setTimeout(()=>{ if(!drag) auto=true; }, 2600);       // 一会儿没动作就自己演
+}
+cv.addEventListener('pointerup', up);
+cv.addEventListener('pointercancel', up);
+
+addEventListener('keydown', e=>{
+  if(e.code==='Space'){ e.preventDefault(); setGlyph(wi+1); tear=newTear((Math.random()*1e9)|0, tear.ang, W/2, H/2); }
+  else if(e.key==='s'||e.key==='S'){ save(); }
+});
+function save(){
+  cv.toBlob(b=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b);
+    a.download='fracture-'+WORD[wi]+'.png';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+}
+
+/* ---------- 循环 ---------- */
+function resize(){
+  DPR = Math.min(1.75, devicePixelRatio||1);
+  W = cv.width  = Math.round(innerWidth *DPR);
+  H = cv.height = Math.round(innerHeight*DPR);
+  cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px';
+  buildMask();
+  if(!tear) tear = newTear(7, 0.22, W*0.5, H*0.5);
+}
+addEventListener('resize', resize);
+
+let zt=0;
+function loop(t){
+  zt += 1/60;
+  zoom = 1 + 0.085*(0.5 - 0.5*Math.cos(Math.min(Math.PI, zt*0.34)));
+  if(auto){
+    /* 自动演示：开 → 停 → 合 → 换字 */
+    autoT += 1/60;
+    const cyc = 5.2, p = (autoT % cyc)/cyc;
+    target = p<0.42 ? p/0.42 : (p<0.66 ? 1 : Math.max(0, 1-(p-0.66)/0.30));
+    if(autoT > cyc){ autoT -= cyc; zt=0; setGlyph(wi+1); tear = newTear((Math.random()*1e9)|0, (Math.random()-0.5)*1.5, W*(0.35+Math.random()*0.3), H*(0.35+Math.random()*0.3)); }
+  }
+  open += (target-open) * (drag ? 0.35 : 0.09);
+  draw();
+  requestAnimationFrame(loop);
+}
+resize();
+setGlyph(0);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
