@@ -65,7 +65,7 @@ let W=0, H=0, DPR=1;
 const FRESH = { bg:'#f4f2f4', paper:'#fdf8fa', grid:'#f9e8ef',
                 edge:'#d2566e', text:'#4a51b0', mark:'#6f63c8' };
 const AGED  = { bg:'#dcd4c2', paper:'#f7f0de', grid:'#e2cabd',
-                edge:'#b3605c', text:'#575b85', mark:'#6d6b9c' };
+                edge:'#a8362f', text:'#3f4474', mark:'#5a57a0' };
 let aged = true;
 let P = AGED;
 
@@ -116,7 +116,7 @@ function layout(){
   FS   = COLW*0.93/(CHARS*unit);
   LH   = FS*1.42;
   PAD  = FS*0.85;
-  INSET= LH*0.20;                 // 每块往里收这么多，裂口的白槽就是 2×它
+  INSET= LH*0.30;                 // 每块往里收这么多，裂口的白槽就是 2×它
   CW   = FS*unit;
   GRIDPX = Math.max(3.5, CW*0.34); // 一个字宽里放三格；低于 3.5 设备像素就看不见了
   ctx.font = FS+'px "Courier New",Courier,ui-monospace,monospace';
@@ -139,12 +139,20 @@ function reset(){
 /* poly 直接是屏幕坐标。ox,oy 是这块纸被挪走了多少 ——
    只用来偏移方格底纹，不参与旋转，所以格子永远是正的 */
 function mk(poly){
-  return { poly, ox:0, oy:0, lines:null, marks:[] };
+  return { poly, ox:0, oy:0, tough:1, lines:null, marks:[] };
 }
 /* 凸多边形整体往里收 e：逐边内移再求相邻边交点 */
 function insetConvex(poly, e){
   const n=poly.length/2;
-  if(n<3) return poly;
+  if(n<3) return null;
+  /* 内移量一旦达到内切圆半径，各边的交点顺序就反了，收出来是个蝴蝶结。
+     内切圆半径 = 2*面积/周长，这个判据是准的，不用事后猜 */
+  let per=0;
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    per += Math.hypot(poly[j*2]-poly[i*2], poly[j*2+1]-poly[i*2+1]);
+  }
+  if(per<1e-6 || e >= 0.88 * 2*area(poly)/per) return null;
   let cx=0, cy=0;
   for(let i=0;i<n;i++){ cx+=poly[i*2]; cy+=poly[i*2+1]; }
   cx/=n; cy/=n;
@@ -163,12 +171,11 @@ function insetConvex(poly, e){
   for(let i=0;i<n;i++){
     const a=L[i], b=L[(i+1)%n];
     const den=a[2]*b[3]-a[3]*b[2];
-    if(Math.abs(den)<1e-9) return poly;       // 两边几乎平行，收不动就算了
+    if(Math.abs(den)<1e-9) return null;       // 两边几乎平行，收不动
     const t=((b[0]-a[0])*b[3]-(b[1]-a[1])*b[2])/den;
     out.push(a[0]+a[2]*t, a[1]+a[3]*t);
   }
-  /* 收过头会自交。粗判一下：还得有面积 */
-  return area(out) > area(poly)*0.15 ? out : poly;
+  return out;
 }
 function rotateVerts(poly, cx, cy, r){
   const c=Math.cos(r), si=Math.sin(r);
@@ -216,33 +223,12 @@ function cut(poly, px,py, ang){
 }
 
 /* 敲一下：把 (px,py) 落在的那块切开，两半各往法线方向推开一点 */
-function crackAt(px, py, ang){
-  let hit=-1;
-  for(let i=shards.length-1;i>=0;i--){
-    if(inside(shards[i], px, py)){ hit=i; break; }
-  }
-  if(hit<0) return false;
-  const s = shards[hit];
-  if(area(s.poly) < (LH*5)*(CW*5)) return false;    // 太小就不再碎了
-
-  const lx = px, ly = py;
-  if(ang===undefined){
-    let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
-    for(let i=0;i<s.poly.length;i+=2){
-      if(s.poly[i]<mnx)mnx=s.poly[i]; if(s.poly[i]>mxx)mxx=s.poly[i];
-      if(s.poly[i+1]<mny)mny=s.poly[i+1]; if(s.poly[i+1]>mxy)mxy=s.poly[i+1];
-    }
-    ang = ((mxx-mnx) > (mxy-mny) ? Math.PI/2 : 0) + rr(-0.62, 0.62);
-  }
-  const c = cut(s.poly, lx, ly, ang);
-  if(!c) return false;
-  const [A,B,nx,ny] = c;
-
+/* 一条裂纹切一块：把切出来的两半做成两块新碎片 */
+function makeKids(s, A, B, nx, ny, ang){
   const g = Math.max(0.6, LH*0.16) * rr(0.4,1.4);     // 只是让碎片散开一点
   const kids = [];
   for(const [poly0, sgn] of [[A,-1],[B,1]]){
-    /* 先整体挪开一点（这一步只是让碎片看着散开），
-       再绕自己的质心转 —— 转的是轮廓，不是里面的内容，
+    /* 先整体挪开一点，再绕自己的质心转 —— 转的是轮廓，不是里面的内容，
        最后统一往里收 INSET。收的量比转角带来的端点位移大，
        所以不管是哪一代的缝，都不会被后来的旋转吃掉 */
     let poly = poly0;
@@ -255,21 +241,112 @@ function crackAt(px, py, ang){
     }
     rotateVerts(poly, cx, cy, rr(-1,1)*INSET*0.55/dmax);  // 端点最多扫过 0.55 个 INSET
     poly = insetConvex(poly, INSET);
-    kids.push({ poly, ox:s.ox+nx*g*sgn, oy:s.oy+ny*g*sgn, lines:null, marks:[] });
+    if(!poly) return null;                 // 收不动 → 这一刀不切了
+    kids.push({ poly, ox:s.ox+nx*g*sgn, oy:s.oy+ny*g*sgn,
+                tough: 1 + 5*Math.pow(rnd(), 2.6),        // 见 pickVictim / fractureSeg
+                lines:null, marks:[] });
   }
-  shards.splice(hit, 1, kids[0], kids[1]);
+  return kids;
+}
 
-  /* 偶尔在裂口上留一枚蓝色的毛刺箭头 */
-  if(rnd() < 0.55){
-    const t = kids[rnd()<0.5?0:1];
-    t.marks.push({ x:lx, y:ly, a:ang+Math.PI/2+rr(-0.5,0.5), L:rr(LH*1.8, LH*4.6), s:(rnd()*1e9)|0 });
+const MINAREA = ()=> (LH*4.5)*(CW*4.5);
+
+/* 线段有没有穿过这块碎片 */
+function segHitsPoly(poly, x0,y0, x1,y1){
+  if(pointInPoly(poly,x0,y0) || pointInPoly(poly,x1,y1)) return true;
+  const n=poly.length;
+  for(let i=0;i<n;i+=2){
+    const j=(i+2)%n;
+    const ax=poly[i], ay=poly[i+1], bx=poly[j], by=poly[j+1];
+    const d1=(x1-x0)*(ay-y0)-(y1-y0)*(ax-x0);
+    const d2=(x1-x0)*(by-y0)-(y1-y0)*(bx-x0);
+    const d3=(bx-ax)*(y0-ay)-(by-ay)*(x0-ax);
+    const d4=(bx-ax)*(y1-ay)-(by-ay)*(x1-ax);
+    if(((d1>0)!==(d2>0)) && ((d3>0)!==(d4>0))) return true;
   }
+  return false;
+}
+
+/* ---------- 裂纹 ----------
+ * 关键改动：一道裂纹是「一条线穿过好几块」，不是「切某一块」。
+ * 所以线段经过的每一块都被同一条线切开 —— 裂纹这才连得起来，
+ * 才有贯穿的长缝和放射状的交汇点，而不是一格一格剁出来的马赛克。
+ */
+function fractureSeg(x0,y0, x1,y1){
+  if(Math.hypot(x1-x0, y1-y0) < 1) return false;
+  const ang = Math.atan2(y1-y0, x1-x0);
+  const min = MINAREA();
+  const out = [];
+  let any=false, lastKids=null;
+  for(const s of shards){
+    if(area(s.poly) > min && segHitsPoly(s.poly, x0,y0, x1,y1)
+       && rnd() < 1/(s.tough||1)){
+      /* 切点不走质心：偏心切才切得出「一大块 + 一条渣」，
+         永远对半切只会把尺寸越切越平均 */
+      const [cx,cy]=centroid(s.poly);
+      const f = 0.5 + (rnd()<0.5?-1:1)*0.44*Math.pow(rnd(),0.55);
+      let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
+      for(let i=0;i<s.poly.length;i+=2){
+        if(s.poly[i]<mnx)mnx=s.poly[i]; if(s.poly[i]>mxx)mxx=s.poly[i];
+        if(s.poly[i+1]<mny)mny=s.poly[i+1]; if(s.poly[i+1]>mxy)mxy=s.poly[i+1];
+      }
+      const px = mnx + (mxx-mnx)*f, py = mny + (mxy-mny)*f;
+      /* 切点要落在裂纹那条线上，否则这一刀就跟裂纹无关了：
+         把偏心点投影回直线 */
+      const ux=Math.cos(ang), uy=Math.sin(ang);
+      const t = (px-x0)*ux + (py-y0)*uy;
+      const c = cut(s.poly, x0+ux*t, y0+uy*t, ang);
+      if(c && area(c[0]) > min*0.30 && area(c[1]) > min*0.30){
+        const kids = makeKids(s, c[0], c[1], c[2], c[3], ang);
+        if(kids){
+          out.push(kids[0], kids[1]);
+          lastKids = kids; any = true;
+          continue;
+        }
+      }
+    }
+    out.push(s);
+  }
+  if(!any) return false;
+  shards = out;
   setNo++;
+  /* 一道裂纹上留一枚蓝色毛刺箭头就够了 */
+  if(lastKids && rnd() < 0.7){
+    const t = lastKids[rnd()<0.5?0:1];
+    t.marks.push({ x:(x0+x1)/2, y:(y0+y1)/2, a:ang+Math.PI/2+rr(-0.5,0.5),
+                   L:rr(LH*1.8, LH*4.6), s:(rnd()*1e9)|0 });
+  }
   return true;
 }
-function inside(s, x, y){
-  const lx=x, ly=y;
-  const p=s.poly, n=p.length;
+
+/* 从某点射出一道有限长的裂纹 */
+function fractureFrom(x, y, ang, len){
+  if(ang===undefined) ang = rnd()*Math.PI*2;
+  if(len===undefined) len = Math.min(W,H)*(0.10+rnd()*0.30);
+  const h=len/2;
+  return fractureSeg(x-Math.cos(ang)*h, y-Math.sin(ang)*h,
+                     x+Math.cos(ang)*h, y+Math.sin(ang)*h);
+}
+
+/* 挑一块来敲。不能永远挑最大的那块 —— 那等于在主动把尺寸拉平。
+   用 面积^0.35 / 韧性 加权：大块更容易中，但「韧」的那几块能一直活下来，
+   于是尺寸分布拉成长尾，有大块能连着读，也有只剩一个字母的渣。 */
+function pickVictim(){
+  const min = MINAREA();
+  let tot=0; const w=[];
+  for(const s of shards){
+    const a=area(s.poly);
+    const v = a>min ? Math.pow(a,0.35)/(s.tough||1) : 0;
+    w.push(v); tot+=v;
+  }
+  if(tot<=0) return null;
+  let x=rnd()*tot;
+  for(let i=0;i<shards.length;i++){ x-=w[i]; if(x<=0) return shards[i]; }
+  return shards[shards.length-1];
+}
+
+function pointInPoly(p, lx, ly){
+  const n=p.length;
   let sign=0;
   for(let i=0;i<n;i+=2){
     const j=(i+2)%n;
@@ -279,6 +356,7 @@ function inside(s, x, y){
   }
   return true;
 }
+function inside(s, x, y){ return pointInPoly(s.poly, x, y); }
 /* ---------- 把整封信重新流进所有碎片 ----------
  * 每一行能放几个字，由碎片在那个高度上有多宽决定。
  * 放不下就从中间断开 —— 参照里那些断在词中间的行就是这么来的。
@@ -540,7 +618,7 @@ function draw(){
     /* 必须重建一次路径：上面画格子时 beginPath 已经把轮廓冲掉了，
        而 restore() 只还原状态、不还原当前路径 */
     shardPath(s);
-    ctx.strokeStyle=P.edge; ctx.lineWidth=Math.max(0.7, DPR*0.85);
+    ctx.strokeStyle=P.edge; ctx.lineWidth=Math.max(0.9, DPR*1.05);
     ctx.lineJoin='round'; ctx.stroke();
   }
 }
@@ -552,20 +630,24 @@ function hit(e){
   const r=cv.getBoundingClientRect();
   return [(e.clientX-r.left)*DPR, (e.clientY-r.top)*DPR];
 }
+let px0=0, py0=0;
 cv.addEventListener('pointerdown', e=>{
   drag=true; idle=0; cv.setPointerCapture(e.pointerId);
-  const [x,y]=hit(e);
-  if(crackAt(x,y)) refresh();
+  const [x,y]=hit(e); px0=x; py0=y;
+  if(fractureFrom(x,y)) refresh();
   draw();
 });
 cv.addEventListener('pointermove', e=>{
   if(!drag) return;
   idle=0;
   const now=performance.now();
-  if(now-lastCrack < 110) return;       // 拖动时别每一帧都炸一次
-  lastCrack=now;
+  if(now-lastCrack < 90) return;
   const [x,y]=hit(e);
-  if(crackAt(x,y)){ refresh(); draw(); }
+  if(Math.hypot(x-px0, y-py0) < LH*1.5) return;   // 攒够一段再裂
+  lastCrack=now;
+  /* 拖出来的这一段就是裂纹本身，沿途的碎片被同一条线切开 */
+  if(fractureSeg(px0,py0, x,y)){ refresh(); draw(); }
+  px0=x; py0=y;
 });
 const up=()=>{ drag=false; };
 cv.addEventListener('pointerup', up);
@@ -573,21 +655,16 @@ cv.addEventListener('pointercancel', up);
 
 addEventListener('keydown', e=>{
   if(e.code==='Space'){ e.preventDefault(); reset(); draw(); idle=0; }
-  else if(e.key==='a'||e.key==='A'){ shatter(26); idle=0; }
+  else if(e.key==='a'||e.key==='A'){ shatter(14); idle=0; }
   else if(e.key==='s'||e.key==='S'){ save(); }
   else if(e.key==='w'||e.key==='W'){ aged=!aged; P = aged?AGED:FRESH; draw(); }
 });
 function shatter(n){
   for(let k=0;k<n;k++){
-    /* 按面积挑一块来炸，大的先碎 —— 不然会有一块一直不动 */
-    let best=-1, bw=-1;
-    for(let i=0;i<shards.length;i++){
-      const w = area(shards[i].poly) * rr(0.5,1.5);
-      if(w>bw){ bw=w; best=i; }
-    }
-    const s=shards[best];
+    const s = pickVictim();
+    if(!s) break;
     const [wx,wy]=centroid(s.poly);
-    crackAt(wx+rr(-1,1)*LH*2, wy+rr(-1,1)*LH*2);
+    fractureFrom(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3);
   }
   refresh(); draw();
 }
@@ -619,9 +696,11 @@ function tick(){
   if(!drag){
     idle++;
     if(idle > 150 && shards.length < 60 && idle % 26 === 0){
-      const s = shards[(rnd()*shards.length)|0];
-      const [wx,wy]=centroid(s.poly);
-      if(crackAt(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3)){ refresh(); draw(); }
+      const s = pickVictim();
+      if(s){
+        const [wx,wy]=centroid(s.poly);
+        if(fractureFrom(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3)){ refresh(); draw(); }
+      }
     }
   }
   requestAnimationFrame(tick);
