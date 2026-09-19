@@ -154,51 +154,6 @@ function spray(x,y,vx,vy,n){
   }
 }
 
-/* ---------- 羽毛笔：笔尖在光标处，羽身斜向右上 ---------- */
-function feather(g,x,y,ang){
-  const L=250*DPR, TH=-0.52 + ang + Math.sin(performance.now()*0.0022)*0.045;
-  g.save(); g.translate(x,y);
-  g.rotate(TH);
-  g.lineCap='round'; g.lineJoin='round';
-
-  /* 先画一层投在沙上的影子，羽毛才像悬在沙面上方 */
-  for(const pass of [{off:[14*DPR,16*DPR],col:'rgba(70,54,30,',a:0.20},
-                     {off:[0,0],col:'rgba(46,34,18,',a:0.78}]){
-    g.save(); g.translate(pass.off[0],pass.off[1]);
-    /* 羽枝：沿羽轴两侧铺开，中段最长 */
-    const NB = pass.a<0.5 ? 46 : 84;   // 影子那遍稀一点，省一半开销
-    for(let i=0;i<NB;i++){
-      const t=i/NB;
-      const bx=-L*t, by=0;
-      const prof=Math.pow(Math.sin(Math.min(1,t*1.06)*Math.PI),0.75);
-      const len=prof*46*DPR*(0.72+0.28*Math.sin(t*37));
-      if(len<0.6) continue;
-      for(const sd of [-1,1]){
-        g.strokeStyle=pass.col+(pass.a*(0.55+0.45*prof)).toFixed(3)+')';
-        g.lineWidth=(2.0-1.2*t)*DPR;
-        g.beginPath(); g.moveTo(bx,by);
-        g.quadraticCurveTo(bx-len*0.30, by+sd*len*0.55, bx-len*0.62, by+sd*len);
-        g.stroke();
-      }
-    }
-    /* 羽轴 */
-    g.strokeStyle=pass.col+(pass.a).toFixed(3)+')';
-    g.lineWidth=3.4*DPR;
-    g.beginPath(); g.moveTo(6*DPR,0); g.lineTo(-L,0); g.stroke();
-    g.restore();
-  }
-  g.restore();
-
-  /* 旋转后的紧包围盒：用大方框会让每帧重着色的像素数翻好几倍 */
-  const c=Math.cos(TH), sn=Math.sin(TH), PAD=62*DPR;
-  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-  for(const [lx,ly] of [[12*DPR,-PAD],[12*DPR,PAD],[-L-PAD,-PAD],[-L-PAD,PAD]]){
-    const wx=x+lx*c-ly*sn, wy=y+lx*sn+ly*c;
-    if(wx<x0)x0=wx; if(wx>x1)x1=wx; if(wy<y0)y0=wy; if(wy>y1)y1=wy;
-  }
-  return [x0-4,y0-4,x1+4,y1+4];
-}
-
 /* ---------- 交互 ---------- */
 let px=-1, py=-1, down=false, mx=W/2, my=H/2, vx=0, vy=0;
 let lastBox=null, depth=0;
@@ -259,13 +214,11 @@ function tick(now){
   ctx.fillStyle='rgba(60,46,26,.5)';
   for(const p of grains) ctx.fillRect(p.x, p.y, 1.6*DPR, 1.6*DPR);
   ctx.restore();
-  const fb = feather(ctx, fx, fy, Math.atan2(vy,vx)*0.06);
-  /* 笔尖那个小坑 */
+  /* 笔尖指示圈（系统光标是隐藏的，没它就不知道笔在哪）*/
   ctx.save(); ctx.globalAlpha=.5; ctx.strokeStyle='rgba(60,46,26,.8)';
   ctx.lineWidth=1.2*DPR; ctx.beginPath(); ctx.arc(fx,fy,R*0.42,0,7); ctx.stroke(); ctx.restore();
-  // 笔尖小圈也要算进去
-  lastBox=[Math.min(fb[0],fx-R), Math.min(fb[1],fy-R),
-           Math.max(fb[2],fx+R), Math.max(fb[3],fy+R)];
+  const CR=R*0.42+4*DPR;
+  lastBox=[fx-CR, fy-CR, fx+CR, fy+CR];
 
   vx*=0.82; vy*=0.82; depth*=0.97;
   frames++;
