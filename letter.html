@@ -30,7 +30,7 @@
 </div>
 <div class="hud tr">
   <div>SHARDS <i id="sn">2</i></div>
-  <div>SET <i id="st">0</i></div>
+  <div>SEEDS <i id="st">2</i></div>
 </div>
 <div class="hud bl">
   <div>在纸上按住拖动 就裂开</div>
@@ -62,10 +62,10 @@ let W=0, H=0, DPR=1;
 /* 纸、格子、红线、蓝字 —— 全部取自参照 */
 /* 两套配色。做旧不是单纯压个黄色滤镜 —— 纸要暖、要黄，
    而红线和蓝字会褪色、去饱和，往灰里走 */
-const FRESH = { bg:'#f4f2f4', paper:'#fdf8fa', grid:'#f9e8ef',
+const FRESH = { bg:'#f4f2f4', paper:'#fdf8fa', grid:'#f0c9d5',
                 edge:'#d2566e', text:'#4a51b0', mark:'#6f63c8' };
-const AGED  = { bg:'#dcd4c2', paper:'#f7f0de', grid:'#e2cabd',
-                edge:'#a8362f', text:'#3f4474', mark:'#5a57a0' };
+const AGED  = { bg:'#e9e2d0', paper:'#f8f1e0', grid:'#ddb2b0',
+                edge:'#b03a33', text:'#454da8', mark:'#5f5cae' };
 let aged = true;
 let P = AGED;
 
@@ -116,32 +116,66 @@ function layout(){
   FS   = COLW*0.93/(CHARS*unit);
   LH   = FS*1.42;
   PAD  = FS*0.85;
-  INSET= LH*0.30;                 // 每块往里收这么多，裂口的白槽就是 2×它
+  INSET= LH*0.62;                 // 每块往里收这么多，裂口的白槽就是 2×它
   CW   = FS*unit;
-  GRIDPX = Math.max(3.5, CW*0.34); // 一个字宽里放三格；低于 3.5 设备像素就看不见了
+  GRIDPX = Math.max(3.5, CW*0.42); // 参照里一个字高大约两格半
   ctx.font = FS+'px "Courier New",Courier,ui-monospace,monospace';
 }
 
 /* ---------- 碎片 ---------- */
-let shards=[], setNo=0;
+let shards=[];
 
 function rect(x,y,w,h){ return [x,y, x+w,y, x+w,y+h, x,y+h]; }
 
+/* ---------- 细胞 ----------
+ * 参照里的碎片不是玻璃那种「一刀切到底」的直边块，而是三条边交于一点、
+ * 每个夹角都接近 120° 的多边形 —— 那是 Voronoi（干裂的泥、细胞壁）。
+ * 所以不再维护切割树：只维护一堆「核」，每次敲就在那儿多撒几颗，
+ * 整张图重新算一遍 Voronoi。核密的地方细胞就小，核稀的地方就留大块。
+ */
+let seeds=[];          // { x, y, col, r1..r4 }  r* 是这颗核自己的随机数，
+                       // 存下来是为了重算时细胞的抖动不会跳
+let marks=[];          // 蓝色毛刺，存页面坐标，重算后再归到各自的细胞里
+
+function addSeed(x, y, col){
+  seeds.push({ x, y, col,
+    r1:rnd(), r2:rnd(), r3:rnd(), r4:rnd() });
+}
+
 function reset(){
   rnd = mulberry32((Math.random()*1e9)|0);
-  shards = [
-    mk(rect(PAGE.x,              PAGE.y, COLW, PAGE.h)),
-    mk(rect(PAGE.x+COLW+GUT,     PAGE.y, COLW, PAGE.h))
-  ];
-  setNo = 0;
-  refresh();
+  seeds=[]; marks=[];
+  addSeed(PAGE.x+COLW*0.5,            PAGE.y+PAGE.h*0.5, 0);
+  addSeed(PAGE.x+COLW*1.5+GUT,        PAGE.y+PAGE.h*0.5, 1);
+  rebuild();
 }
-/* poly 直接是屏幕坐标。ox,oy 是这块纸被挪走了多少 ——
-   只用来偏移方格底纹，不参与旋转，所以格子永远是正的 */
-function mk(poly){
-  return { poly, ox:0, oy:0, tough:1, lines:null, marks:[] };
+
+function colRect(c){
+  return c===0 ? rect(PAGE.x, PAGE.y, COLW, PAGE.h)
+               : rect(PAGE.x+COLW+GUT, PAGE.y, COLW, PAGE.h);
 }
-/* 凸多边形整体往里收 e：逐边内移再求相邻边交点 */
+function colOf(x){
+  return x < PAGE.x+COLW+GUT*0.5 ? 0 : 1;
+}
+
+/* 半平面裁剪：留下离 p 比离 q 近的一半 */
+function clipHalf(poly, px,py, qx,qy){
+  const mx=(px+qx)*0.5, my=(py+qy)*0.5, dx=qx-px, dy=qy-py;
+  const out=[]; const n=poly.length;
+  for(let i=0;i<n;i+=2){
+    const j=(i+2)%n;
+    const ax=poly[i], ay=poly[i+1], bx=poly[j], by=poly[j+1];
+    const da=(ax-mx)*dx+(ay-my)*dy;
+    const db=(bx-mx)*dx+(by-my)*dy;
+    if(da<=0) out.push(ax,ay);
+    if((da<=0)!==(db<=0)){
+      const t=da/(da-db);
+      out.push(ax+(bx-ax)*t, ay+(by-ay)*t);
+    }
+  }
+  return out;
+}
+
 function insetConvex(poly, e){
   const n=poly.length/2;
   if(n<3) return null;
@@ -161,17 +195,17 @@ function insetConvex(poly, e){
     const j=(i+1)%n;
     const ax=poly[i*2], ay=poly[i*2+1], bx=poly[j*2], by=poly[j*2+1];
     let ex=bx-ax, ey=by-ay;
-    const d=Math.hypot(ex,ey); if(d<1e-6) return poly;
+    const d=Math.hypot(ex,ey); if(d<1e-6) return null;
     ex/=d; ey/=d;
-    let nx=ey, ny=-ex;                        // 边的法线
-    if((cx-ax)*nx + (cy-ay)*ny < 0){ nx=-nx; ny=-ny; }   // 指向质心才是「内」
+    let nx=ey, ny=-ex;
+    if((cx-ax)*nx + (cy-ay)*ny < 0){ nx=-nx; ny=-ny; }
     L.push([ax+nx*e, ay+ny*e, ex, ey]);
   }
   const out=[];
   for(let i=0;i<n;i++){
     const a=L[i], b=L[(i+1)%n];
     const den=a[2]*b[3]-a[3]*b[2];
-    if(Math.abs(den)<1e-9) return null;       // 两边几乎平行，收不动
+    if(Math.abs(den)<1e-9) return null;
     const t=((b[0]-a[0])*b[3]-(b[1]-a[1])*b[2])/den;
     out.push(a[0]+a[2]*t, a[1]+a[3]*t);
   }
@@ -185,7 +219,6 @@ function rotateVerts(poly, cx, cy, r){
     poly[i+1] = cy + x*si + y*c;
   }
 }
-
 function area(p){
   let a=0;
   for(let i=0;i<p.length;i+=2){
@@ -199,152 +232,6 @@ function centroid(p){
   for(let i=0;i<p.length;i+=2){ x+=p[i]; y+=p[i+1]; }
   return [x/(p.length/2), y/(p.length/2)];
 }
-
-/* 一条直线把凸多边形切成两半。凸的切完还是凸的，
-   所以后面「某一行有多宽」永远只有一段区间，不用处理多段 */
-function cut(poly, px,py, ang){
-  const nx = -Math.sin(ang), ny = Math.cos(ang);
-  const sd = (x,y)=> (x-px)*nx + (y-py)*ny;
-  const A=[], B=[];
-  const n=poly.length;
-  for(let i=0;i<n;i+=2){
-    const j=(i+2)%n;
-    const ax=poly[i], ay=poly[i+1], bx=poly[j], by=poly[j+1];
-    const da=sd(ax,ay), db=sd(bx,by);
-    if(da<=0) A.push(ax,ay); else B.push(ax,ay);
-    if((da<=0)!==(db<=0)){
-      const t=da/(da-db);
-      const ix=ax+(bx-ax)*t, iy=ay+(by-ay)*t;
-      A.push(ix,iy); B.push(ix,iy);
-    }
-  }
-  if(A.length<6 || B.length<6) return null;
-  return [A, B, nx, ny];
-}
-
-/* 敲一下：把 (px,py) 落在的那块切开，两半各往法线方向推开一点 */
-/* 一条裂纹切一块：把切出来的两半做成两块新碎片 */
-function makeKids(s, A, B, nx, ny, ang){
-  const g = Math.max(0.6, LH*0.16) * rr(0.4,1.4);     // 只是让碎片散开一点
-  const kids = [];
-  for(const [poly0, sgn] of [[A,-1],[B,1]]){
-    /* 先整体挪开一点，再绕自己的质心转 —— 转的是轮廓，不是里面的内容，
-       最后统一往里收 INSET。收的量比转角带来的端点位移大，
-       所以不管是哪一代的缝，都不会被后来的旋转吃掉 */
-    let poly = poly0;
-    for(let i=0;i<poly.length;i+=2){ poly[i]+=nx*g*sgn; poly[i+1]+=ny*g*sgn; }
-    const [cx,cy]=centroid(poly);
-    let dmax=1;
-    for(let i=0;i<poly.length;i+=2){
-      const d=Math.hypot(poly[i]-cx, poly[i+1]-cy);
-      if(d>dmax) dmax=d;
-    }
-    rotateVerts(poly, cx, cy, rr(-1,1)*INSET*0.55/dmax);  // 端点最多扫过 0.55 个 INSET
-    poly = insetConvex(poly, INSET);
-    if(!poly) return null;                 // 收不动 → 这一刀不切了
-    kids.push({ poly, ox:s.ox+nx*g*sgn, oy:s.oy+ny*g*sgn,
-                tough: 1 + 5*Math.pow(rnd(), 2.6),        // 见 pickVictim / fractureSeg
-                lines:null, marks:[] });
-  }
-  return kids;
-}
-
-const MINAREA = ()=> (LH*4.5)*(CW*4.5);
-
-/* 线段有没有穿过这块碎片 */
-function segHitsPoly(poly, x0,y0, x1,y1){
-  if(pointInPoly(poly,x0,y0) || pointInPoly(poly,x1,y1)) return true;
-  const n=poly.length;
-  for(let i=0;i<n;i+=2){
-    const j=(i+2)%n;
-    const ax=poly[i], ay=poly[i+1], bx=poly[j], by=poly[j+1];
-    const d1=(x1-x0)*(ay-y0)-(y1-y0)*(ax-x0);
-    const d2=(x1-x0)*(by-y0)-(y1-y0)*(bx-x0);
-    const d3=(bx-ax)*(y0-ay)-(by-ay)*(x0-ax);
-    const d4=(bx-ax)*(y1-ay)-(by-ay)*(x1-ax);
-    if(((d1>0)!==(d2>0)) && ((d3>0)!==(d4>0))) return true;
-  }
-  return false;
-}
-
-/* ---------- 裂纹 ----------
- * 关键改动：一道裂纹是「一条线穿过好几块」，不是「切某一块」。
- * 所以线段经过的每一块都被同一条线切开 —— 裂纹这才连得起来，
- * 才有贯穿的长缝和放射状的交汇点，而不是一格一格剁出来的马赛克。
- */
-function fractureSeg(x0,y0, x1,y1){
-  if(Math.hypot(x1-x0, y1-y0) < 1) return false;
-  const ang = Math.atan2(y1-y0, x1-x0);
-  const min = MINAREA();
-  const out = [];
-  let any=false, lastKids=null;
-  for(const s of shards){
-    if(area(s.poly) > min && segHitsPoly(s.poly, x0,y0, x1,y1)
-       && rnd() < 1/(s.tough||1)){
-      /* 切点不走质心：偏心切才切得出「一大块 + 一条渣」，
-         永远对半切只会把尺寸越切越平均 */
-      const [cx,cy]=centroid(s.poly);
-      const f = 0.5 + (rnd()<0.5?-1:1)*0.44*Math.pow(rnd(),0.55);
-      let mnx=Infinity,mxx=-Infinity,mny=Infinity,mxy=-Infinity;
-      for(let i=0;i<s.poly.length;i+=2){
-        if(s.poly[i]<mnx)mnx=s.poly[i]; if(s.poly[i]>mxx)mxx=s.poly[i];
-        if(s.poly[i+1]<mny)mny=s.poly[i+1]; if(s.poly[i+1]>mxy)mxy=s.poly[i+1];
-      }
-      const px = mnx + (mxx-mnx)*f, py = mny + (mxy-mny)*f;
-      /* 切点要落在裂纹那条线上，否则这一刀就跟裂纹无关了：
-         把偏心点投影回直线 */
-      const ux=Math.cos(ang), uy=Math.sin(ang);
-      const t = (px-x0)*ux + (py-y0)*uy;
-      const c = cut(s.poly, x0+ux*t, y0+uy*t, ang);
-      if(c && area(c[0]) > min*0.30 && area(c[1]) > min*0.30){
-        const kids = makeKids(s, c[0], c[1], c[2], c[3], ang);
-        if(kids){
-          out.push(kids[0], kids[1]);
-          lastKids = kids; any = true;
-          continue;
-        }
-      }
-    }
-    out.push(s);
-  }
-  if(!any) return false;
-  shards = out;
-  setNo++;
-  /* 一道裂纹上留一枚蓝色毛刺箭头就够了 */
-  if(lastKids && rnd() < 0.7){
-    const t = lastKids[rnd()<0.5?0:1];
-    t.marks.push({ x:(x0+x1)/2, y:(y0+y1)/2, a:ang+Math.PI/2+rr(-0.5,0.5),
-                   L:rr(LH*1.8, LH*4.6), s:(rnd()*1e9)|0 });
-  }
-  return true;
-}
-
-/* 从某点射出一道有限长的裂纹 */
-function fractureFrom(x, y, ang, len){
-  if(ang===undefined) ang = rnd()*Math.PI*2;
-  if(len===undefined) len = Math.min(W,H)*(0.10+rnd()*0.30);
-  const h=len/2;
-  return fractureSeg(x-Math.cos(ang)*h, y-Math.sin(ang)*h,
-                     x+Math.cos(ang)*h, y+Math.sin(ang)*h);
-}
-
-/* 挑一块来敲。不能永远挑最大的那块 —— 那等于在主动把尺寸拉平。
-   用 面积^0.35 / 韧性 加权：大块更容易中，但「韧」的那几块能一直活下来，
-   于是尺寸分布拉成长尾，有大块能连着读，也有只剩一个字母的渣。 */
-function pickVictim(){
-  const min = MINAREA();
-  let tot=0; const w=[];
-  for(const s of shards){
-    const a=area(s.poly);
-    const v = a>min ? Math.pow(a,0.35)/(s.tough||1) : 0;
-    w.push(v); tot+=v;
-  }
-  if(tot<=0) return null;
-  let x=rnd()*tot;
-  for(let i=0;i<shards.length;i++){ x-=w[i]; if(x<=0) return shards[i]; }
-  return shards[shards.length-1];
-}
-
 function pointInPoly(p, lx, ly){
   const n=p.length;
   let sign=0;
@@ -357,10 +244,89 @@ function pointInPoly(p, lx, ly){
   return true;
 }
 function inside(s, x, y){ return pointInPoly(s.poly, x, y); }
-/* ---------- 把整封信重新流进所有碎片 ----------
- * 每一行能放几个字，由碎片在那个高度上有多宽决定。
- * 放不下就从中间断开 —— 参照里那些断在词中间的行就是这么来的。
+
+/* 重算整张 Voronoi。核只跟同一栏的核竞争，所以中间那条栏沟一直在 */
+function rebuild(){
+  shards=[];
+  for(let i=0;i<seeds.length;i++){
+    const s=seeds[i];
+    let poly = colRect(s.col);
+    for(let j=0;j<seeds.length && poly.length>=6;j++){
+      if(j===i || seeds[j].col!==s.col) continue;
+      poly = clipHalf(poly, s.x,s.y, seeds[j].x,seeds[j].y);
+    }
+    if(poly.length<6) continue;
+    const raw = poly.slice();                 // 收之前的形状，用来归置毛刺
+
+    /* 细胞整体挪一点点再微转，最后统一往里收。缝主要来自「收」，
+       所以每条边两侧都留一样宽的白槽 —— 参照里正是均匀的一圈 */
+    const dx=(s.r1-0.5)*INSET*0.9, dy=(s.r2-0.5)*INSET*0.9;
+    for(let k=0;k<poly.length;k+=2){ poly[k]+=dx; poly[k+1]+=dy; }
+    const [cx,cy]=centroid(poly);
+    let dmax=1;
+    for(let k=0;k<poly.length;k+=2){
+      const d=Math.hypot(poly[k]-cx, poly[k+1]-cy);
+      if(d>dmax) dmax=d;
+    }
+    rotateVerts(poly, cx, cy, (s.r3-0.5)*2*INSET*0.45/dmax);
+    const ins = insetConvex(poly, INSET);
+    if(!ins) continue;
+    shards.push({ poly:ins, raw, ox:dx, oy:dy, lines:null, marks:[] });
+  }
+  /* 毛刺归到所在的细胞里 */
+  for(const m of marks){
+    for(const sh of shards){
+      if(pointInPoly(sh.raw, m.x, m.y)){ sh.marks.push(m); break; }
+    }
+  }
+}
+
+/* ---------- 敲 ----------
+ * 敲一下 = 在那儿撒几颗核。撒得密，那片就碎成小细胞；
+ * 没撒到的地方整块留着，于是「能连着读的大块」和「只剩一个字母的渣」
+ * 能同时存在。
  */
+const MINCELL = ()=> (LH*3.2)*(CW*3.2);
+
+function seedAt(x, y, spread, n){
+  const col = colOf(x);
+  const x0 = col===0 ? PAGE.x : PAGE.x+COLW+GUT;
+  let added=0;
+  for(let i=0;i<n;i++){
+    const px = x + (rnd()-0.5)*spread*2;
+    const py = y + (rnd()-0.5)*spread*2;
+    if(px < x0 || px > x0+COLW || py < PAGE.y || py > PAGE.y+PAGE.h) continue;
+    /* 离已有的核太近就不撒了，否则会挤出没法收的细长细胞 */
+    let ok=true;
+    for(const q of seeds){
+      if(q.col===col && Math.hypot(q.x-px,q.y-py) < Math.sqrt(MINCELL())*0.72){ ok=false; break; }
+    }
+    if(!ok) continue;
+    addSeed(px, py, col);
+    added++;
+  }
+  if(added && rnd()<0.5){
+    marks.push({ x, y, a:rnd()*6.283, L:rr(LH*1.8, LH*4.6), s:(rnd()*1e9)|0 });
+  }
+  return added;
+}
+
+function crackAt(x, y){
+  const sp = Math.min(W,H)*(0.02+rnd()*0.05);
+  return seedAt(x, y, sp, 2+(rnd()*4|0)) > 0;
+}
+/* 沿一段路径撒，拖动时就是「这一路都裂开」 */
+function crackSeg(x0,y0, x1,y1){
+  const L=Math.hypot(x1-x0,y1-y0);
+  const steps=Math.max(1, Math.round(L/(Math.sqrt(MINCELL())*0.9)));
+  let any=0;
+  for(let i=0;i<=steps;i++){
+    const t=i/steps;
+    any += seedAt(x0+(x1-x0)*t, y0+(y1-y0)*t, Math.sqrt(MINCELL())*0.55, 2);
+  }
+  return any>0;
+}
+
 function spanAt(poly, y){
   let lo=Infinity, hi=-Infinity;
   const n=poly.length;
@@ -413,7 +379,7 @@ function refresh(){
     s.lines = lines;
   }
   document.getElementById('sn').textContent = shards.length;
-  document.getElementById('st').textContent = setNo;
+  document.getElementById('st').textContent = seeds.length;
 }
 
 /* ---------- 蓝色毛刺箭头 ---------- */
@@ -561,7 +527,7 @@ function draw(){
     ctx.fillStyle=P.paper; ctx.fill();
 
     /* 方格按纸的原点排，所以碎片一推开，格子就对不上了 —— 参照里正是这样 */
-    ctx.strokeStyle=P.grid; ctx.lineWidth=DPR*0.5;
+    ctx.strokeStyle=P.grid; ctx.lineWidth=DPR*0.55;
     ctx.beginPath();
     let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
     for(let i=0;i<s.poly.length;i+=2){
@@ -618,7 +584,7 @@ function draw(){
     /* 必须重建一次路径：上面画格子时 beginPath 已经把轮廓冲掉了，
        而 restore() 只还原状态、不还原当前路径 */
     shardPath(s);
-    ctx.strokeStyle=P.edge; ctx.lineWidth=Math.max(0.9, DPR*1.05);
+    ctx.strokeStyle=P.edge; ctx.lineWidth=Math.max(0.7, DPR*0.72);
     ctx.lineJoin='round'; ctx.stroke();
   }
 }
@@ -634,7 +600,7 @@ let px0=0, py0=0;
 cv.addEventListener('pointerdown', e=>{
   drag=true; idle=0; cv.setPointerCapture(e.pointerId);
   const [x,y]=hit(e); px0=x; py0=y;
-  if(fractureFrom(x,y)) refresh();
+  if(crackAt(x,y)){ rebuild(); refresh(); }
   draw();
 });
 cv.addEventListener('pointermove', e=>{
@@ -646,7 +612,7 @@ cv.addEventListener('pointermove', e=>{
   if(Math.hypot(x-px0, y-py0) < LH*1.5) return;   // 攒够一段再裂
   lastCrack=now;
   /* 拖出来的这一段就是裂纹本身，沿途的碎片被同一条线切开 */
-  if(fractureSeg(px0,py0, x,y)){ refresh(); draw(); }
+  if(crackSeg(px0,py0, x,y)){ rebuild(); refresh(); draw(); }
   px0=x; py0=y;
 });
 const up=()=>{ drag=false; };
@@ -660,13 +626,14 @@ addEventListener('keydown', e=>{
   else if(e.key==='w'||e.key==='W'){ aged=!aged; P = aged?AGED:FRESH; draw(); }
 });
 function shatter(n){
+  /* 成簇地撒，不是均匀撒 —— 均匀撒出来每块一样大，又变回马赛克 */
   for(let k=0;k<n;k++){
-    const s = pickVictim();
-    if(!s) break;
-    const [wx,wy]=centroid(s.poly);
-    fractureFrom(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3);
+    const col = rnd()<0.5?0:1;
+    const x0 = col===0 ? PAGE.x : PAGE.x+COLW+GUT;
+    const cx = x0 + rnd()*COLW, cy = PAGE.y + rnd()*PAGE.h;
+    seedAt(cx, cy, Math.min(W,H)*(0.02+rnd()*0.09), 2+(rnd()*6|0));
   }
-  refresh(); draw();
+  rebuild(); refresh(); draw();
 }
 function save(){
   cv.toBlob(b=>{
@@ -696,10 +663,11 @@ function tick(){
   if(!drag){
     idle++;
     if(idle > 150 && shards.length < 60 && idle % 26 === 0){
-      const s = pickVictim();
-      if(s){
-        const [wx,wy]=centroid(s.poly);
-        if(fractureFrom(wx+rr(-1,1)*LH*3, wy+rr(-1,1)*LH*3)){ refresh(); draw(); }
+      const col = rnd()<0.5?0:1;
+      const x0 = col===0 ? PAGE.x : PAGE.x+COLW+GUT;
+      if(seedAt(x0+rnd()*COLW, PAGE.y+rnd()*PAGE.h,
+                Math.min(W,H)*(0.02+rnd()*0.07), 2+(rnd()*4|0))>0){
+        rebuild(); refresh(); draw();
       }
     }
   }
