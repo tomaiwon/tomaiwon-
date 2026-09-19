@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>花束</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#f2f3f6;
+    font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+  #cv{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  #cv.drag{cursor:grabbing}
+  .hud{position:fixed;pointer-events:none;color:#3c4550;
+    letter-spacing:.14em;text-transform:uppercase;font-size:10px;opacity:.7}
+  .tl{top:20px;left:22px;font-weight:700;font-size:13px;letter-spacing:.02em}
+  .tr{top:22px;right:22px;text-align:right;line-height:2}
+  .tr b{display:inline-block;min-width:54px;text-align:left;font-weight:400;opacity:.55}
+  .bl{bottom:22px;left:22px;line-height:1.9}
+  .br{bottom:22px;right:22px;text-align:right;opacity:.45}
+  kbd{font:inherit;border:1px solid rgba(60,69,80,.35);padding:1px 5px;border-radius:2px}
+  /* 窄屏下左右两条说明会撞在一起，右边那条收掉 */
+  @media (max-width:760px){ .br{display:none} .tr b{min-width:42px} }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud tl">花束 / BOUQUET</div>
+<div class="hud tr">
+  <div><b>SEED</b> <span id="sd">–</span></div>
+  <div><b>STEMS</b> <span id="st">–</span></div>
+  <div><b>COLOR</b> <span id="pl">–</span></div>
+</div>
+<div class="hud bl">
+  <div>拖动 转动花束　左右=转　上下=开合</div>
+  <div><kbd>空格</kbd> 换一束　<kbd>C</kbd> 换配色　<kbd>S</kbd> 存图</div>
+</div>
+<div class="hud br">A study in radial composition</div>
+
+<script>
+/* =====================================================================
+ * 花束 —— 抽卡式的生成花束
+ *
+ * 结构就一句话：所有花茎都从同一个「扎点」出发，沿着一个圆锥面往外散。
+ *   1) 每根茎给一个方位角 φ 和一个锥角 tilt，算出 3D 末端
+ *   2) 弱透视投影到屏幕，按 z 从远到近排序 —— 自然就有前后遮挡
+ *   3) 茎画成「描边的锥形管」（多边形，两端粗细不同），末端扣一朵花
+ *   4) 扎点下面再补一截切口茎，外面缠一条布带
+ *
+ * 转动 = 整体 yaw 一个角度。因为前后顺序由 φ+yaw 决定，转起来遮挡关系
+ * 会重新洗牌，看着就真的是一束立体的花在转，而不是一张图在摇。
+ *
+ * 外面那两圈细灰线是「浑天仪」式的拖动提示：拖的时候浮现，松手淡掉。
+ * ===================================================================== */
+
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+
+let W=0, H=0, DPR=1, CX=0, CY=0, SC=1;
+const FOC = 1500;          // 焦距。越小透视越夸张，花束会像鱼眼一样炸开
+
+/* ---------- 随机 ---------- */
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15, 1|a);
+    t=t+Math.imul(t^t>>>7, 61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+let rnd = mulberry32(1);
+const rr  = (a,b)=> a+(b-a)*rnd();
+const ri  = (a,b)=> a+((b-a+1)*rnd()|0);
+const pick= arr => arr[arr.length*rnd()|0];
+
+/* ---------- 颜色 ---------- */
+function hx(h){ h=h.replace('#',''); return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)); }
+function rgb(c){ return 'rgb('+c[0]+','+c[1]+','+c[2]+')'; }
+/* 描边色 = 填充色压暗。用纯黑会显脏，压暗自身才是插画的做法 */
+function ink(hex, amt){ const c=hx(hex); const k=1-(amt===undefined?0.52:amt);
+  return rgb(c.map(v=>Math.round(v*k))); }
+function mix(a,b,t){ const x=hx(a), y=hx(b);
+  return rgb([0,1,2].map(i=>Math.round(x[i]+(y[i]-x[i])*t))); }
+
+/* 配色方案。每套定：背景 / 茎 / 布带 / 一组花色 */
+const PALETTES = [
+  { name:'秋红',   bg:'#f2f3f6', stem:'#78877c', tie:'#e8e2d6',
+    flowers:['#c22a33','#a8202c','#cf9b2c','#6b4a7d','#7a2540','#d9bb55'] },
+  { name:'珊瑚',   bg:'#f4f5f8', stem:'#33443b', tie:'#f0ddd8',
+    flowers:['#ef9b8b','#f2b3a4','#9e1b2a','#c7566c','#e58274','#b03a4a'] },
+  { name:'灰玫',   bg:'#f3f2f0', stem:'#4a5a4c', tie:'#ece4dc',
+    flowers:['#d9a0a4','#b4707c','#8c4a58','#e3c3c0','#6d3646','#c98a86'] },
+  { name:'靛青',   bg:'#f1f3f5', stem:'#5f7268', tie:'#e6e8e4',
+    flowers:['#33507a','#5c7fa8','#9fb6cc','#243a5c','#c2b280','#7e93ad'] },
+  { name:'芥黄',   bg:'#f5f4ef', stem:'#7d8a6e', tie:'#eae4d2',
+    flowers:['#d99a1f','#b8761a','#e8c25c','#8a4b2a','#5c6b3f','#c96a2c'] }
+];
+
+/* ---------- 花的种类 ----------
+ * len  茎长（相对单位），size 花头大小，band 偏好的锥面半径（0=中心 1=外沿）
+ * face true = 正面朝观众（圆花），false = 顺着茎的方向长（穗子、叶子）
+ */
+const KINDS = [
+  { id:'camellia', w:2.2, len:[0.46,1.04], size:[0.85,1.25], band:[0.00,0.72], face:true  },
+  { id:'poppy',    w:2.0, len:[0.44,1.06], size:[0.68,1.00], band:[0.05,0.88], face:true  },
+  { id:'ranun',    w:1.8, len:[0.42,0.98], size:[0.58,0.86], band:[0.00,0.80], face:true  },
+  { id:'dahlia',   w:1.4, len:[0.44,1.02], size:[0.58,0.88], band:[0.05,0.82], face:true  },
+  { id:'bud',      w:1.1, len:[0.66,1.06], size:[0.50,0.74], band:[0.25,1.00], face:false },
+  { id:'spike',    w:1.2, len:[0.86,1.08], size:[0.62,0.90], band:[0.30,1.00], face:false },
+  { id:'gyp',      w:1.0, len:[0.90,1.12], size:[0.68,0.96], band:[0.28,1.00], face:false },
+  { id:'euca',     w:1.2, len:[0.72,0.98], size:[0.62,0.88], band:[0.35,1.00], face:false },
+  { id:'fern',     w:0.75, len:[0.76,1.02], size:[0.70,0.96], band:[0.40,1.00], face:false }
+];
+/* 按「离中心多远」挑种类：外圈只该长穗子和叶子，圆花要在中间 */
+function pickKindFor(b){
+  let tot=0;
+  const ws = KINDS.map(k=>{
+    const inR = (b >= k.band[0]-0.06 && b <= k.band[1]+0.06) ? 1 : 0.015;
+    const w = k.w*inR; tot += w; return w;
+  });
+  let x = rnd()*tot;
+  for(let i=0;i<KINDS.length;i++){ x-=ws[i]; if(x<=0) return KINDS[i]; }
+  return KINDS[0];
+}
+
+/* ---------- 生成一束 ---------- */
+let bouquet=null, pal=PALETTES[0];
+
+function build(seed, palIdx){
+  rnd = mulberry32(seed>>>0);
+  pal = PALETTES[palIdx % PALETTES.length];
+
+  const n = ri(30, 46);
+  const GA = Math.PI*(3-Math.sqrt(5));   // 黄金角：方位角不会聚成几坨
+  const stems = [];
+  for(let i=0;i<n;i++){
+    /* sqrt 让每一圈的「面积」相等，外圈才不会挤成一堵墙 */
+    const band = Math.sqrt((i+0.5)/n);
+    const k = pickKindFor(band);
+    stems.push({
+      kind : k.id,
+      face : k.face,
+      phi  : i*GA + rr(-0.20,0.20),
+      band : Math.min(1, band + rr(-0.05,0.05)),
+      len  : rr(k.len[0],  k.len[1]),
+      dome : k.face ? 0.42 : (rnd()<0.45 ? 0.58 : 0.06),
+      rise : rr(-0.07, 0.11),            // 单独再抬/压一点，破掉整齐的圆顶       // 越往外越矮的衰减量
+      size : rr(k.size[0], k.size[1]),
+      bow  : rr(-1,1),                   // 茎往哪边弯
+      spin : rr(-0.35,0.35),             // 花头自己再歪一点
+      col  : pick(pal.flowers),
+      alt  : rnd()<0.4                   // 花心用不用反色
+    });
+  }
+  /* 切口茎：扎点以下那一把，跟上面的茎没关系，单独散开 */
+  const cuts = [];
+  const nc = ri(14, 22);
+  for(let i=0;i<nc;i++){
+    cuts.push({ a: rr(-0.40,0.40), len: rr(0.22,0.40), w: rr(0.55,1.0), z: rr(-1,1) });
+  }
+  return { seed, stems, cuts,
+    tieW : rr(0.9,1.1),
+    tail : rr(0.8,1.25),
+    knot : rr(-1,1) };
+}
+
+/* ---------- 投影 ---------- */
+function proj(x,y,z){
+  const k = FOC/(FOC + z);
+  return [CX + x*k*SC, CY - y*k*SC, k];
+}
+
+/* ---------- 画一根锥形管 ---------- */
+function tube(pts, w0, w1, fill, lw){
+  const L=[], R=[];
+  for(let i=0;i<pts.length;i++){
+    const t=i/(pts.length-1);
+    const a=pts[Math.max(0,i-1)], b=pts[Math.min(pts.length-1,i+1)];
+    let nx=-(b[1]-a[1]), ny=(b[0]-a[0]);
+    const m=Math.hypot(nx,ny)||1; nx/=m; ny/=m;
+    const w=(w0+(w1-w0)*t)/2;
+    L.push([pts[i][0]+nx*w, pts[i][1]+ny*w]);
+    R.push([pts[i][0]-nx*w, pts[i][1]-ny*w]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(L[0][0], L[0][1]);
+  for(let i=1;i<L.length;i++) ctx.lineTo(L[i][0], L[i][1]);
+  for(let i=R.length-1;i>=0;i--) ctx.lineTo(R[i][0], R[i][1]);
+  ctx.closePath();
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.lineJoin='round'; ctx.lineWidth=lw; ctx.strokeStyle=ink(fill,0.55); ctx.stroke();
+}
+
+/* 二次贝塞尔采样 */
+function qbez(p0,p1,p2,n){
+  const out=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n, u=1-t;
+    out.push([u*u*p0[0]+2*u*t*p1[0]+t*t*p2[0],
+              u*u*p0[1]+2*u*t*p1[1]+t*t*p2[1]]);
+  }
+  return out;
+}
+
+/* ---------- 花头 ----------
+ * 都画在局部坐标系里：原点 = 花和茎的接点，-y 是往外长的方向。
+ * 统一用 sh() 填色 + 压暗描边，这样整束的笔触感是一致的。
+ */
+function sh(fill, lw){
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.lineWidth=lw; ctx.strokeStyle=ink(fill,0.55);
+  ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+}
+/* 一片圆润的花瓣：基部宽、顶部圆。基部掐尖的话会像风车，不像花 */
+function petal(r0, r1, half){
+  const wx = Math.sin(half)*r1;
+  ctx.beginPath();
+  ctx.moveTo(0,-r0);
+  ctx.bezierCurveTo( wx*1.30, -r0-r1*0.10,  wx*1.02, -r0-r1*0.88,  0, -r0-r1);
+  ctx.bezierCurveTo(-wx*1.02, -r0-r1*0.88, -wx*1.30, -r0-r1*0.10,  0, -r0);
+  ctx.closePath();
+}
+function ringOfPetals(cnt, r0, r1, half, off, fill, lw){
+  for(let i=0;i<cnt;i++){
+    ctx.save();
+    ctx.rotate(off + i*Math.PI*2/cnt);
+    petal(r0, r1, half);
+    sh(fill, lw);
+    ctx.restore();
+  }
+}
+
+function drawPoppy(s, c, alt, lw){
+  const dark = alt ? ink(c,0.74) : '#26262a';
+  ringOfPetals(5, s*0.10, s*0.90, 0.78, 0.3, c, lw);
+  ctx.beginPath(); ctx.arc(0,0,s*0.21,0,7); sh(dark, lw);
+  ctx.strokeStyle=dark; ctx.lineWidth=lw*0.75; ctx.lineCap='round';
+  for(let i=0;i<10;i++){
+    const a=i*0.6283;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*s*0.18, Math.sin(a)*s*0.18);
+    ctx.lineTo(Math.cos(a)*s*0.33, Math.sin(a)*s*0.33); ctx.stroke();
+  }
+}
+function drawCamellia(s, c, alt, lw){
+  /* 山茶：三圈宽瓣，一圈比一圈小且错开，瓣与瓣要压着，不能留缝 */
+  const mid = mix(c, '#ffffff', 0.16);
+  ringOfPetals(7, s*0.34, s*0.58, 0.72, 0.00, c,   lw);
+  ringOfPetals(6, s*0.20, s*0.44, 0.72, 0.45, mid, lw);
+  ringOfPetals(5, s*0.06, s*0.28, 0.70, 0.22, c,   lw);
+  ctx.strokeStyle=ink(c,0.66); ctx.lineWidth=lw*0.7; ctx.lineCap='round';
+  for(let i=0;i<7;i++){ const a=i*0.897;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*s*0.03, Math.sin(a)*s*0.03);
+    ctx.lineTo(Math.cos(a)*s*0.10, Math.sin(a)*s*0.10); ctx.stroke(); }
+}
+function drawRanun(s, c, alt, lw){
+  /* 洋牡丹：一层层短而密的小瓣裹到中心，中心一个螺旋 */
+  ringOfPetals(8, s*0.46, s*0.38, 1.05, 0.00, c, lw*0.9);
+  ringOfPetals(7, s*0.33, s*0.30, 1.05, 0.42, mix(c,'#ffffff',0.10), lw*0.9);
+  ringOfPetals(6, s*0.21, s*0.24, 1.05, 0.20, c, lw*0.85);
+  ringOfPetals(5, s*0.10, s*0.18, 1.05, 0.60, mix(c,'#ffffff',0.16), lw*0.8);
+  ctx.beginPath();
+  for(let i=0;i<=40;i++){
+    const t=i/40, a=t*Math.PI*3.6, r=s*0.16*(1-t*0.92);
+    const x=Math.cos(a)*r, y=Math.sin(a)*r;
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  }
+  ctx.strokeStyle=ink(c,0.62); ctx.lineWidth=lw*0.75; ctx.lineCap='round'; ctx.stroke();
+}
+function drawDahlia(s, c, alt, lw){
+  /* 尖瓣菊：瓣要短、要多，长宽比接近 2 就对了，再长就成了雏菊 */
+  const spike=(r0,r1,half)=>{
+    const wx=Math.sin(half)*r1;
+    ctx.beginPath(); ctx.moveTo(0,-r0);
+    ctx.quadraticCurveTo( wx*1.1, -r0-r1*0.50, 0, -r0-r1);
+    ctx.quadraticCurveTo(-wx*1.1, -r0-r1*0.50, 0, -r0);
+    ctx.closePath();
+  };
+  const mid = mix(c,'#ffffff',0.18);
+  for(const [cnt,r0,r1,off,col] of [[13,s*0.34,s*0.40,0.00,c],
+                                    [10,s*0.18,s*0.30,0.24,mid],
+                                    [ 6,s*0.04,s*0.20,0.50,c]]){
+    for(let i=0;i<cnt;i++){ ctx.save(); ctx.rotate(off+i*Math.PI*2/cnt);
+      spike(r0,r1,0.58); sh(col,lw*0.85); ctx.restore(); }
+  }
+  ctx.beginPath(); ctx.arc(0,0,s*0.08,0,7); sh(ink(c,0.5), lw*0.75);
+}
+function drawBud(s, c, alt, lw){
+  /* 花苞：一个立着的水滴，外面包两道，底下两片萼 */
+  const Hh = s*1.45;
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.bezierCurveTo( s*0.62,-Hh*0.16,  s*0.56,-Hh*0.86, 0,-Hh);
+  ctx.bezierCurveTo(-s*0.56,-Hh*0.86, -s*0.62,-Hh*0.16, 0,0);
+  ctx.closePath(); sh(c, lw);
+  ctx.strokeStyle=ink(c,0.55); ctx.lineWidth=lw*0.8; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-s*0.40,-Hh*0.42);
+  ctx.quadraticCurveTo(0,-Hh*0.80, s*0.40,-Hh*0.42); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s*0.20,-Hh*0.66);
+  ctx.quadraticCurveTo(s*0.06,-Hh*0.90, s*0.30,-Hh*0.60); ctx.stroke();
+  const g = mix(pal.stem, '#1c2e22', 0.25);
+  for(const d of [-1,1]){
+    ctx.beginPath(); ctx.moveTo(0,-Hh*0.04);
+    ctx.quadraticCurveTo(d*s*0.30,-Hh*0.12, d*s*0.34, Hh*0.16);
+    ctx.quadraticCurveTo(d*s*0.10, Hh*0.02, 0,-Hh*0.04);
+    ctx.closePath(); sh(g, lw*0.75);
+  }
+}
+function drawSpike(s, c, alt, lw){
+  /* 薰衣草：细长的穗。粒要小、要密、往梢头收，胖了就成了玉米 */
+  const Hh = s*2.9, n = 26;
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-Hh*0.34);
+  ctx.strokeStyle=ink(pal.stem,0.42); ctx.lineWidth=lw*1.2; ctx.lineCap='round'; ctx.stroke();
+  const tip = mix(c,'#ffffff',0.12);
+  for(let i=0;i<n;i++){
+    const t=i/(n-1);
+    const y=-Hh*(0.20+0.80*t);
+    const r=s*0.105*(1-t*0.48)*(0.72+0.28*Math.sin(Math.min(1,t*3.2)*1.57));
+    const x=(i%2?1:-1)*s*0.070*(1-t*0.55);
+    ctx.beginPath(); ctx.ellipse(x,y,r,r*1.3,0,0,7); sh(i%3?c:tip, lw*0.55);
+  }
+}
+function drawGyp(s, c, alt, lw){
+  /* 满天星：两级分叉，梢头一颗小白球。线要极细、球要小，不然糊成一团 */
+  const tipF = alt ? mix(c,'#ffffff',0.84) : '#fdfdfd';
+  const hair = Math.max(0.65, lw*0.46);
+  ctx.strokeStyle='#6f7880'; ctx.lineWidth=hair; ctx.lineCap='round';
+  const arms = 4 + (rnd()*2|0);
+  const tips = [];
+  for(let i=0;i<arms;i++){
+    const a = -Math.PI/2 + (i-(arms-1)/2)*(1.25/arms) + rr(-0.08,0.08);
+    const L1 = s*(1.15+rnd()*0.55);
+    const p1 = [Math.cos(a)*L1, Math.sin(a)*L1];
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.quadraticCurveTo(p1[0]*0.35, p1[1]*0.78, p1[0], p1[1]); ctx.stroke();
+    const sub = 3 + (rnd()*3|0);
+    for(let j=0;j<sub;j++){
+      const b = a + (j-(sub-1)/2)*0.48 + rr(-0.10,0.10);
+      const L2 = s*(0.30+rnd()*0.32);
+      const p2 = [p1[0]+Math.cos(b)*L2, p1[1]+Math.sin(b)*L2];
+      ctx.beginPath(); ctx.moveTo(p1[0],p1[1]);
+      ctx.quadraticCurveTo(p1[0]+Math.cos(b)*L2*0.5, p1[1]+Math.sin(b)*L2*0.42, p2[0], p2[1]);
+      ctx.stroke();
+      tips.push(p2);
+      if(rnd()<0.45){                       // 偶尔再分一级，疏密才不匀
+        const d = b + rr(-0.5,0.5), L3=L2*0.62;
+        const p3=[p2[0]+Math.cos(d)*L3, p2[1]+Math.sin(d)*L3];
+        ctx.beginPath(); ctx.moveTo(p2[0],p2[1]); ctx.lineTo(p3[0],p3[1]); ctx.stroke();
+        tips.push(p3);
+      }
+    }
+  }
+  for(const p of tips){
+    ctx.beginPath(); ctx.arc(p[0],p[1], s*0.078, 0, 7);
+    ctx.fillStyle=tipF; ctx.fill();
+    ctx.strokeStyle='#525a62'; ctx.lineWidth=Math.max(0.6, lw*0.45); ctx.stroke();
+  }
+}
+function drawEuca(s, c, alt, lw){
+  /* 尤加利：一根直杆，两侧对生的小圆叶，叶子之间要看得见杆 */
+  const Hh=s*3.2, n=7;
+  const leaf = mix(pal.stem, c, alt?0.26:0.05);
+  ctx.beginPath(); ctx.moveTo(0,0);
+  ctx.quadraticCurveTo(s*0.10,-Hh*0.5, 0,-Hh);
+  ctx.strokeStyle=ink(pal.stem,0.48); ctx.lineWidth=lw*1.1; ctx.lineCap='round'; ctx.stroke();
+  for(let i=0;i<n;i++){
+    const t=(i+0.55)/n, y=-Hh*t, r=s*0.170*(1-t*0.34);
+    for(const d of [-1,1]){
+      ctx.save(); ctx.translate(d*r*1.25, y + r*0.30*d); ctx.rotate(d*0.30);
+      ctx.beginPath(); ctx.ellipse(0,0, r, r*0.86, 0, 0, 7);
+      sh(leaf, lw*0.7);
+      ctx.restore();
+    }
+  }
+  ctx.beginPath(); ctx.arc(0,-Hh-s*0.12, s*0.15, 0, 7); sh(leaf, lw*0.7);
+}
+function drawFern(s, c, alt, lw){
+  /* 蕨叶：一条略弯的中肋，两侧交错的尖羽片，越往梢越短 */
+  const Hh=s*2.9, n=12;
+  const leaf = mix(pal.stem, '#1a3324', 0.34);
+  ctx.beginPath(); ctx.moveTo(0,0);
+  ctx.quadraticCurveTo(s*0.26,-Hh*0.55, s*0.14,-Hh);
+  ctx.strokeStyle=ink(leaf,0.30); ctx.lineWidth=lw*1.2; ctx.lineCap='round'; ctx.stroke();
+  for(let i=0;i<n;i++){
+    const t=(i+0.35)/n;
+    const u=1-t;
+    const x=s*0.30*2*t*u + s*0.16*t*t;       // 贴着中肋走
+    const y=-Hh*t;
+    const L=s*0.66*(1-t*0.72)+s*0.05;
+    for(const d of [-1,1]){
+      const swing = 0.80 - t*0.20;         // 越往梢越贴着中肋
+      ctx.save(); ctx.translate(x,y);
+      ctx.rotate(d>0 ? -swing : Math.PI+swing);
+      ctx.beginPath(); ctx.moveTo(0,0);
+      ctx.quadraticCurveTo(L*0.40,-L*0.34, L,-L*0.04);
+      ctx.quadraticCurveTo(L*0.42, L*0.14, 0,0);
+      ctx.closePath(); sh(leaf, lw*0.65);
+      ctx.restore();
+    }
+  }
+}
+const HEADS = { poppy:drawPoppy, camellia:drawCamellia, ranun:drawRanun, dahlia:drawDahlia,
+                bud:drawBud, spike:drawSpike, gyp:drawGyp, euca:drawEuca, fern:drawFern };
+
+/* ---------- 浑天仪：拖动时浮现的两圈细线 ---------- */
+function ringPts(tilt, spinAxis, R, yc, n){
+  /* 一个 3D 圆：先在 xy 平面上画，再绕 x 轴倾斜 tilt，再绕 y 轴转 spinAxis */
+  const out=[];
+  const ct=Math.cos(tilt), st=Math.sin(tilt);
+  const cs=Math.cos(spinAxis), ss=Math.sin(spinAxis);
+  for(let i=0;i<=n;i++){
+    const u=i/n*Math.PI*2;
+    let x=Math.cos(u)*R, y=Math.sin(u)*R, z=0;
+    let y2=y*ct - z*st, z2=y*st + z*ct;
+    let x3=x*cs + z2*ss, z3=-x*ss + z2*cs;
+    out.push([x3, y2+yc, z3]);
+  }
+  return out;
+}
+function drawRingHalf(pts, front, alpha){
+  ctx.strokeStyle='rgba(120,128,138,'+(alpha*0.85)+')';
+  ctx.lineWidth=1.25*DPR; ctx.lineCap='round';
+  let pen=false;
+  ctx.beginPath();
+  for(const p of pts){
+    const isFront = p[2] <= 0;
+    if(isFront!==front){ pen=false; continue; }
+    const q=proj(p[0],p[1],p[2]);
+    if(pen) ctx.lineTo(q[0],q[1]); else { ctx.moveTo(q[0],q[1]); pen=true; }
+  }
+  ctx.stroke();
+}
+function drawBeads(pts, front, alpha, phase){
+  for(let b=0;b<3;b++){
+    const u=(phase+b/3)%1;
+    const p=pts[Math.floor(u*(pts.length-1))];
+    if((p[2]<=0)!==front) continue;
+    const q=proj(p[0],p[1],p[2]);
+    ctx.beginPath(); ctx.arc(q[0],q[1], 7*DPR*q[2], 0, 7);
+    ctx.fillStyle='rgba(252,252,253,'+alpha+')'; ctx.fill();
+    ctx.strokeStyle='rgba(120,128,138,'+alpha+')'; ctx.lineWidth=1.3*DPR; ctx.stroke();
+  }
+}
+
+/* ---------- 主绘制 ---------- */
+let yaw=0, spread=0.74, ringA=0, ringAlpha=0, breathe=0;
+
+function draw(){
+  ctx.fillStyle=pal.bg; ctx.fillRect(0,0,W,H);
+
+  const U    = Math.min(W, H*0.92);    // 场景尺度：竖屏时别被高度带偏
+  SC         = 1;
+  const unit = U*0.455;                 // 茎长 1.0 对应多少像素
+  const lw   = Math.max(1.1, U*0.0026);
+
+  const B = bouquet;
+  const spr = spread + Math.sin(breathe)*0.012;
+
+  /* 各圈的 3D 端点 */
+  const items = B.stems.map(s=>{
+    const tilt = spr * (0.22 + 0.78*s.band);
+    const ph   = s.phi + yaw;
+    const L    = s.len * (1 - s.dome*s.band) * (1 + s.rise) * unit;
+    const x =  Math.sin(tilt)*Math.cos(ph)*L;
+    const y =  Math.cos(tilt)*L;
+    const z =  Math.sin(tilt)*Math.sin(ph)*L;
+    return { s, x, y, z };
+  });
+  items.sort((a,b)=> b.z - a.z);       // 远的先画
+
+  /* ---- 扎点以下的切口茎（先画，布带会压住它们的上沿） ---- */
+  const tie = proj(0,0,0);
+  const cutsSorted = B.cuts.slice().sort((a,b)=>b.z-a.z);
+  for(const c of cutsSorted){
+    const k   = FOC/(FOC + c.z*unit*0.10);
+    const len = c.len*unit;
+    const x1  = tie[0] + Math.sin(c.a)*len*k;
+    const y1  = tie[1] + Math.cos(c.a)*len*k;
+    const mx  = (tie[0]+x1)/2 + Math.sin(c.a)*len*0.10;
+    const my  = (tie[1]+y1)/2;
+    const w   = U*0.0098*c.w*k;
+    const col = mix(pal.stem, '#1c2a20', 0.18 + 0.22*(1-k));
+    ctx.lineCap='butt';
+    tube(qbez([tie[0],tie[1]-U*0.02],[mx,my],[x1,y1], 6), w*1.15, w*0.92, col, lw);
+  }
+
+  /* ---- 浑天仪的后半圈 ---- */
+  let rings=null;
+  if(ringAlpha>0.003){
+    rings = [
+      ringPts(0.10, ringA,        unit*0.86, unit*0.56, 110),
+      ringPts(1.22, ringA+2.1,    unit*0.90, unit*0.24, 110)
+    ];
+    for(let i=0;i<rings.length;i++){
+      drawRingHalf(rings[i], false, ringAlpha);
+      drawBeads(rings[i], false, ringAlpha, (ringA*0.16 + i*0.37)%1);
+    }
+  }
+
+  /* ---- 花茎 + 花头 ---- */
+  for(const it of items){
+    const s=it.s;
+    const hd = proj(it.x, it.y, it.z);
+    const k  = hd[2];
+    const dx = hd[0]-tie[0], dy = hd[1]-tie[1];
+    const L  = Math.hypot(dx,dy) || 1;
+    /* 茎往侧面鼓一点，不然一束直线太死 */
+    const bow = s.bow * L * 0.055;
+    const mid = [ (tie[0]+hd[0])/2 - dy/L*bow, (tie[1]+hd[1])/2 + dx/L*bow ];
+    const w   = U*0.0088*k;
+    const col = mix(pal.stem, '#16241b', 0.10 + 0.34*Math.max(0,(it.z/unit+1)/2));
+    ctx.lineCap='round';
+    tube(qbez([tie[0],tie[1]],mid,[hd[0],hd[1]], 9), w*1.25, w*0.78, col, lw*k);
+
+    /* 花头：接在茎的末端，朝向 = 茎的切线 */
+    const ang = Math.atan2(hd[1]-mid[1], hd[0]-mid[0]) + Math.PI/2;
+    ctx.save();
+    ctx.translate(hd[0], hd[1]);
+    /* 圆花正面朝人（只跟着茎歪一点），穗子叶子完全顺着茎长 */
+    ctx.rotate(s.face ? ang*0.30 + s.spin : ang + s.spin*0.5);
+    const sz = s.size * (1 - 0.22*s.band) * unit * 0.178 * k;
+    rnd = mulberry32((B.seed ^ (s.phi*9973|0)) >>> 0);   // 满天星要可复现
+    HEADS[s.kind](sz, s.col, s.alt, lw*k);
+    ctx.restore();
+  }
+
+  /* ---- 布带 ---- */
+  drawTie(tie, U, lw, B);
+
+  /* ---- 浑天仪的前半圈 ---- */
+  if(rings){
+    for(let i=0;i<rings.length;i++){
+      drawRingHalf(rings[i], true, ringAlpha);
+      drawBeads(rings[i], true, ringAlpha, (ringA*0.16 + i*0.37)%1);
+    }
+  }
+}
+
+function drawTie(tie, U, lw, B){
+  /* 束口的布带：横着缠一圈 + 一个结 + 两条垂下来的带尾。
+     带子本身是「有宽度的曲线」，所以还是用 tube 画，两端收窄才有布感。 */
+  const c  = pal.tie;
+  const bw = U*0.100*B.tieW;
+  const bh = U*0.036;
+  const x  = tie[0], y = tie[1];
+  ctx.lineCap='round';
+
+  tube(qbez([x-bw*0.66, y-bh*0.36],[x, y+bh*0.50],[x+bw*0.62, y-bh*0.16], 12),
+       bh*0.40, bh*0.56, c, lw*1.05);
+
+  /* 结上的那个环：一条绕回自身的曲线，不能画成方块 */
+  const kx = x - bw*0.34 + B.knot*bw*0.07;
+  const ky = y + bh*0.06;
+  const lp = qbez([kx+bw*0.06, ky-bh*0.26],[kx-bw*0.42, ky-bh*0.10],[kx-bw*0.04, ky+bh*0.52], 12)
+       .concat(qbez([kx-bw*0.04, ky+bh*0.52],[kx-bw*0.10, ky+bh*0.06],[kx+bw*0.10, ky-bh*0.18], 12));
+  tube(lp, bh*0.30, bh*0.22, c, lw);
+
+  /* 垂下来的两条带尾，一长一短，末端收窄 */
+  const tl = U*0.130*B.tail;
+  tube(qbez([kx+bw*0.02, ky+bh*0.30],[kx-bw*0.20, ky+tl*0.58],[kx+bw*0.06, ky+tl], 12),
+       bh*0.34, bh*0.24, c, lw);
+  tube(qbez([kx+bw*0.14, ky+bh*0.34],[kx+bw*0.26, ky+tl*0.44],[kx+bw*0.06, ky+tl*0.74], 12),
+       bh*0.28, bh*0.19, mix(c,'#ffffff',0.22), lw);
+}
+
+/* ---------- 交互 ---------- */
+let drag=false, lx=0, ly=0, moved=0;
+let palIdx=0, seed=(Math.random()*1e9)|0;
+
+function reroll(newSeed){
+  seed = (newSeed===undefined) ? (Math.random()*1e9)|0 : newSeed;
+  bouquet = build(seed, palIdx);
+  document.getElementById('sd').textContent = seed.toString(36).toUpperCase();
+  document.getElementById('st').textContent = bouquet.stems.length;
+  document.getElementById('pl').textContent = pal.name;
+}
+
+cv.addEventListener('pointerdown', e=>{
+  drag=true; moved=0; lx=e.clientX; ly=e.clientY;
+  cv.classList.add('drag'); cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  const dx=e.clientX-lx, dy=e.clientY-ly;
+  lx=e.clientX; ly=e.clientY; moved += Math.abs(dx)+Math.abs(dy);
+  yaw    += dx*0.010;
+  spread  = Math.max(0.22, Math.min(0.96, spread + dy*0.0024));
+  ringAlpha = Math.min(1, ringAlpha + 0.22);
+});
+function up(){
+  if(!drag) return;
+  drag=false; cv.classList.remove('drag');
+  if(moved < 6) reroll();             // 没拖动 = 点了一下 = 换一束
+}
+cv.addEventListener('pointerup', up);
+cv.addEventListener('pointercancel', up);
+
+addEventListener('keydown', e=>{
+  if(e.code==='Space'){ e.preventDefault(); reroll(); }
+  else if(e.key==='c'||e.key==='C'){ palIdx=(palIdx+1)%PALETTES.length; bouquet=build(seed,palIdx);
+    document.getElementById('pl').textContent = pal.name; }
+  else if(e.key==='s'||e.key==='S'){ save(); }
+});
+
+function save(){
+  cv.toBlob(b=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b);
+    a.download='bouquet-'+seed.toString(36)+'.png';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+}
+
+/* ---------- 循环 ---------- */
+function resize(){
+  DPR = Math.min(1.75, devicePixelRatio||1);
+  W = cv.width  = Math.round(innerWidth *DPR);
+  H = cv.height = Math.round(innerHeight*DPR);
+  cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px';
+  CX = W/2;
+  CY = H*0.5 + Math.min(W, H*0.92)*0.30;   // 扎点压到重心下方，花往上开
+}
+addEventListener('resize', resize);
+
+let lastDraw=0;
+function loop(t){
+  const live = drag || ringAlpha>0.004;    // 正在交互：每帧都画
+  if(live){
+    ringA += 0.0060;
+    if(!drag) ringAlpha *= 0.938;          // 松手后淡掉
+  }else{
+    /* 静止时只是极缓慢地呼吸一下，20fps 足够，省出来的是电池 */
+    breathe += 0.016;
+    yaw     += Math.sin(breathe*0.27)*0.00050;
+    if(t-lastDraw < 50){ requestAnimationFrame(loop); return; }
+  }
+  lastDraw=t;
+  draw();
+  requestAnimationFrame(loop);
+}
+resize();
+reroll();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
