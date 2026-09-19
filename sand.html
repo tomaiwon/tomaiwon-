@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>沙板</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#cbb187;
+    font:12px/1.4 "SF Mono",Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+  #cv{display:block;width:100%;height:100%;cursor:none;touch-action:none}
+  .hud{position:fixed;pointer-events:none;color:#4a3a22;mix-blend-mode:multiply;
+    letter-spacing:.14em;text-transform:uppercase;font-size:10px;opacity:.72}
+  .tl{top:20px;left:22px;font-weight:700;font-size:13px;letter-spacing:.02em}
+  .tr{top:22px;right:22px;text-align:right;line-height:2}
+  .tr b{display:inline-block;min-width:52px;text-align:left;font-weight:400;opacity:.6}
+  .bl{bottom:22px;left:22px;line-height:1.9}
+  .br{bottom:22px;right:22px;text-align:right;opacity:.5}
+  kbd{font:inherit;border:1px solid rgba(74,58,34,.4);padding:1px 5px;border-radius:2px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud tl">沙板 / SANDBOARD</div>
+<div class="hud tr">
+  <div><b>DRAW</b> 按住拖动</div>
+  <div><b>FPS</b> <span id="fps">–</span></div>
+  <div><b>DEPTH</b> <span id="dep">0.0</span></div>
+</div>
+<div class="hud bl">
+  <div><kbd>空格</kbd> 抹平　<kbd>1</kbd>–<kbd>3</kbd> 笔宽</div>
+</div>
+<div class="hud br">A study in height fields</div>
+
+<script>
+/* =====================================================================
+ * 沙板 —— 在沙子上写字
+ *
+ * 不是粒子，是「高度场 + 光照」：
+ *   1) 维护一张与画布同尺寸的高度图 h[]
+ *   2) 笔划过去：中心挖下去，周围堆起来（沙子是被推开的，不是被删掉的）
+ *   3) 每帧由高度图求法线，用一个方向光着色 —— 凹槽自然有明暗
+ *   4) 一层固定不变的颗粒噪声叠上去，才像沙
+ *
+ * 性能关键：沙子只有被画到的地方会变，所以每帧只重新着色「脏矩形」，
+ * 而不是整屏。不然 JS 逐像素跑满屏根本到不了 60 帧。
+ * ===================================================================== */
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+
+let W=0, H=0, DPR=1;
+let h=null, grain=null, img=null;
+
+/* 沙的基色与光照 */
+const BASE = [212, 186, 141];
+const LIGHT = (()=>{ const v=[-0.52,-0.60,0.61], l=Math.hypot(...v); return v.map(x=>x/l); })();
+const NSCALE = 1.15;    // 法线强度。调大就变成发亮的橡胶管，沙子要平
+const AMB = 0.74, DIFF = 0.40;
+const AO  = 0.20;       // 凹下去多暗——沙画的黑主要来自这里
+
+function resize(){
+  DPR = Math.min(devicePixelRatio||1, 1.75);
+  W = Math.round(innerWidth*DPR); H = Math.round(innerHeight*DPR);
+  cv.width=W; cv.height=H; cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px';
+  h = new Float32Array(W*H);
+  grain = new Float32Array(W*H);
+  /* 颗粒：一次生成、永不变（会变的话沙面就在"沸腾"）。
+     粗颗粒决定"这是沙不是磨砂玻璃"，细颗粒补高频。 */
+  const cw=Math.ceil(W/3)+1, ch=Math.ceil(H/3)+1;
+  const coarse=new Float32Array(cw*ch);
+  for(let i=0;i<coarse.length;i++) coarse[i]=Math.random()*2-1;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    grain[y*W+x] = coarse[((y/3)|0)*cw+((x/3)|0)]*0.78 + (Math.random()*2-1)*0.42;
+  }
+  /* 大尺度起伏，让沙面不是一块死板 */
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    h[y*W+x] = Math.sin(x*0.0031+y*0.0017)*0.5 + Math.sin(x*0.0009-y*0.0042)*0.7;
+  }
+  img = ctx.createImageData(W,H);
+  shade(0,0,W,H);
+  flush(0,0,W,H);
+}
+
+/* ---------- 着色：由高度图求法线 + 方向光 ---------- */
+function shade(x0,y0,x1,y1){
+  x0=Math.max(1,x0|0); y0=Math.max(1,y0|0);
+  x1=Math.min(W-1,x1|0); y1=Math.min(H-1,y1|0);
+  const d=img.data;
+  for(let y=y0;y<y1;y++){
+    let i=y*W+x0;
+    for(let x=x0;x<x1;x++,i++){
+      const hx=(h[i-1]-h[i+1])*NSCALE;
+      const hy=(h[i-W]-h[i+W])*NSCALE;
+      const inv=1/Math.sqrt(hx*hx+hy*hy+1);
+      const nl=(hx*LIGHT[0]+hy*LIGHT[1]+LIGHT[2])*inv;
+      let lum=AMB+DIFF*Math.max(0,nl);
+      lum *= 1 + Math.max(-0.72, Math.min(0.16, h[i]*AO));   // 凹处更暗
+      const g=grain[i]*26;
+      const p=i<<2;
+      d[p  ]=Math.max(0,Math.min(255, BASE[0]*lum+g));
+      d[p+1]=Math.max(0,Math.min(255, BASE[1]*lum+g*0.95));
+      d[p+2]=Math.max(0,Math.min(255, BASE[2]*lum+g*0.85));
+      d[p+3]=255;
+    }
+  }
+}
+function flush(x0,y0,x1,y1){
+  x0=Math.max(0,x0|0); y0=Math.max(0,y0|0);
+  x1=Math.min(W,x1|0); y1=Math.min(H,y1|0);
+  if(x1<=x0||y1<=y0) return;
+  ctx.putImageData(img, 0,0, x0,y0, x1-x0, y1-y0);
+}
+
+/* ---------- 笔：沙子是被推开的，不是被删掉的 ---------- */
+let R = 24*1.2, DEPTH = 1.15;
+/* 廉价哈希：给每个像素一个固定的抖动量，笔划边缘才有毛刺 */
+function jit(x,y){
+  let n=(x*374761393+y*668265263)|0;
+  n=(n^(n>>13))*1274126177|0;
+  return ((n^(n>>16))>>>0)/4294967296;
+}
+function stamp(cx,cy,press){
+  const r=R, r2=r*r, core=r*0.60, core2=core*core;
+  const x0=Math.max(1,(cx-r)|0), x1=Math.min(W-1,(cx+r+1)|0);
+  const y0=Math.max(1,(cy-r)|0), y1=Math.min(H-1,(cy+r+1)|0);
+  for(let y=y0;y<y1;y++){
+    const dy=y-cy, dy2=dy*dy;
+    for(let x=x0;x<x1;x++){
+      const dx=x-cx, d2=dx*dx+dy2;
+      if(d2>r2) continue;
+      const i=y*W+x;
+      const jn=0.62+0.76*jit(x,y);       // 每个像素固定的抖动 → 颗粒状毛边
+      if(d2<core2){                        // 中心：挖下去
+        const t=1-d2/core2;
+        h[i] -= DEPTH*press*t*t*jn;
+      } else {                             // 外圈：堆起来（挖出来的沙堆在两边）
+        const t=(Math.sqrt(d2)-core)/(r-core);
+        h[i] += DEPTH*press*0.24*Math.sin(t*Math.PI)*jn;
+      }
+    }
+  }
+  return [x0-2,y0-2,x1+2,y1+2];
+}
+
+/* ---------- 飞溅的沙粒 ---------- */
+const grains=[];
+function spray(x,y,vx,vy,n){
+  for(let i=0;i<n;i++){
+    const a=Math.atan2(vy,vx)+(Math.random()-0.5)*2.2, s=Math.random()*3.5+0.6;
+    grains.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1.1,life:1});
+  }
+}
+
+/* ---------- 羽毛笔：笔尖在光标处，羽身斜向右上 ---------- */
+function feather(g,x,y,ang){
+  const L=250*DPR, TH=-0.52 + ang + Math.sin(performance.now()*0.0022)*0.045;
+  g.save(); g.translate(x,y);
+  g.rotate(TH);
+  g.lineCap='round'; g.lineJoin='round';
+
+  /* 先画一层投在沙上的影子，羽毛才像悬在沙面上方 */
+  for(const pass of [{off:[14*DPR,16*DPR],col:'rgba(70,54,30,',a:0.20},
+                     {off:[0,0],col:'rgba(46,34,18,',a:0.78}]){
+    g.save(); g.translate(pass.off[0],pass.off[1]);
+    /* 羽枝：沿羽轴两侧铺开，中段最长 */
+    const NB = pass.a<0.5 ? 46 : 84;   // 影子那遍稀一点，省一半开销
+    for(let i=0;i<NB;i++){
+      const t=i/NB;
+      const bx=-L*t, by=0;
+      const prof=Math.pow(Math.sin(Math.min(1,t*1.06)*Math.PI),0.75);
+      const len=prof*46*DPR*(0.72+0.28*Math.sin(t*37));
+      if(len<0.6) continue;
+      for(const sd of [-1,1]){
+        g.strokeStyle=pass.col+(pass.a*(0.55+0.45*prof)).toFixed(3)+')';
+        g.lineWidth=(2.0-1.2*t)*DPR;
+        g.beginPath(); g.moveTo(bx,by);
+        g.quadraticCurveTo(bx-len*0.30, by+sd*len*0.55, bx-len*0.62, by+sd*len);
+        g.stroke();
+      }
+    }
+    /* 羽轴 */
+    g.strokeStyle=pass.col+(pass.a).toFixed(3)+')';
+    g.lineWidth=3.4*DPR;
+    g.beginPath(); g.moveTo(6*DPR,0); g.lineTo(-L,0); g.stroke();
+    g.restore();
+  }
+  g.restore();
+
+  /* 旋转后的紧包围盒：用大方框会让每帧重着色的像素数翻好几倍 */
+  const c=Math.cos(TH), sn=Math.sin(TH), PAD=62*DPR;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const [lx,ly] of [[12*DPR,-PAD],[12*DPR,PAD],[-L-PAD,-PAD],[-L-PAD,PAD]]){
+    const wx=x+lx*c-ly*sn, wy=y+lx*sn+ly*c;
+    if(wx<x0)x0=wx; if(wx>x1)x1=wx; if(wy<y0)y0=wy; if(wy>y1)y1=wy;
+  }
+  return [x0-4,y0-4,x1+4,y1+4];
+}
+
+/* ---------- 交互 ---------- */
+let px=-1, py=-1, down=false, mx=W/2, my=H/2, vx=0, vy=0;
+let lastBox=null, depth=0;
+const P = e => [e.clientX*DPR, e.clientY*DPR];
+
+cv.addEventListener('pointerdown',e=>{ down=true; cv.setPointerCapture(e.pointerId);
+  const [x,y]=P(e); px=x; py=y; mx=x; my=y; });
+cv.addEventListener('pointerup',()=>{ down=false; px=py=-1; });
+cv.addEventListener('pointermove',e=>{
+  const [x,y]=P(e);
+  vx=x-mx; vy=y-my; mx=x; my=y;
+  if(!down){ px=x; py=y; return; }
+  drawTo(x,y);
+});
+addEventListener('keydown',e=>{
+  if(e.code==='Space'){ e.preventDefault(); resize(); }
+  if(e.key==='1') R=14*DPR; if(e.key==='2') R=24*DPR; if(e.key==='3') R=40*DPR;
+});
+
+const dirty=[];
+function drawTo(x,y){
+  const d=Math.hypot(x-px,y-py);
+  const step=Math.max(1.6, R*0.26);
+  const n=Math.max(1,Math.ceil(d/step));
+  for(let i=1;i<=n;i++){
+    const t=i/n, cx=px+(x-px)*t, cy=py+(y-py)*t;
+    dirty.push(stamp(cx,cy,1));
+  }
+  depth=Math.min(1,depth+d*0.004);
+  if(d>3) spray(x,y,(x-px),(y-py),Math.min(6,(d/4)|0));
+  px=x; py=y;
+}
+
+/* ---------- 主循环 ---------- */
+let frames=0, fpsT=performance.now();
+function tick(now){
+  /* 上一帧羽毛/沙粒盖住的地方，先把沙子重画回来 */
+  if(lastBox) dirty.push(lastBox);
+
+  for(const b of dirty){ shade(b[0],b[1],b[2],b[3]); flush(b[0],b[1],b[2],b[3]); }
+  dirty.length=0;
+
+  /* 沙粒落地 → 变成高度，堆在那儿 */
+  for(let i=grains.length-1;i>=0;i--){
+    const p=grains[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.26; p.life-=0.045;
+    if(p.life<=0||p.x<2||p.y<2||p.x>W-2||p.y>H-2){
+      if(p.x>2&&p.y>2&&p.x<W-2&&p.y<H-2){
+        const b=stamp(p.x,p.y,0.05); dirty.push(b);
+      }
+      grains.splice(i,1);
+    }
+  }
+
+  /* 羽毛 + 沙粒画在沙面之上 */
+  const fx=mx, fy=my;
+  ctx.save();
+  ctx.fillStyle='rgba(60,46,26,.5)';
+  for(const p of grains) ctx.fillRect(p.x, p.y, 1.6*DPR, 1.6*DPR);
+  ctx.restore();
+  const fb = feather(ctx, fx, fy, Math.atan2(vy,vx)*0.06);
+  /* 笔尖那个小坑 */
+  ctx.save(); ctx.globalAlpha=.5; ctx.strokeStyle='rgba(60,46,26,.8)';
+  ctx.lineWidth=1.2*DPR; ctx.beginPath(); ctx.arc(fx,fy,R*0.42,0,7); ctx.stroke(); ctx.restore();
+  // 笔尖小圈也要算进去
+  lastBox=[Math.min(fb[0],fx-R), Math.min(fb[1],fy-R),
+           Math.max(fb[2],fx+R), Math.max(fb[3],fy+R)];
+
+  vx*=0.82; vy*=0.82; depth*=0.97;
+  frames++;
+  if(now-fpsT>500){ document.getElementById('fps').textContent=Math.round(frames*1000/(now-fpsT));
+    frames=0; fpsT=now;
+    document.getElementById('dep').textContent=depth.toFixed(1); }
+  requestAnimationFrame(tick);
+}
+
+addEventListener('resize',resize);
+resize();
+/* 开场先写点东西，页面打开不是一块空沙 */
+(function demo(){
+  const pts=[];
+  const cxs=innerWidth*DPR*0.5, cys=innerHeight*DPR*0.5;
+  for(let i=0;i<=160;i++){
+    const t=i/160;
+    pts.push([cxs+(t-0.5)*innerWidth*DPR*0.62, cys+Math.sin(t*9)*innerHeight*DPR*0.10]);
+  }
+  px=pts[0][0]; py=pts[0][1];
+  for(const [x,y] of pts) drawTo(x,y);
+  mx=pts[pts.length-1][0]; my=pts[pts.length-1][1];
+})();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
