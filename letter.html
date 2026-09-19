@@ -34,7 +34,7 @@
 </div>
 <div class="hud bl">
   <div>在纸上按住拖动 就裂开</div>
-  <div><kbd>空格</kbd> 复原　<kbd>A</kbd> 全碎　<kbd>S</kbd> 存图</div>
+  <div><kbd>空格</kbd> 复原　<kbd>A</kbd> 全碎　<kbd>W</kbd> 做旧　<kbd>S</kbd> 存图</div>
 </div>
 <div class="hud br">Text reflows into every shard</div>
 
@@ -60,12 +60,14 @@ const ctx = cv.getContext('2d', { alpha:false });
 let W=0, H=0, DPR=1;
 
 /* 纸、格子、红线、蓝字 —— 全部取自参照 */
-const BG    = '#f4f2f4';     // 纸外面
-const PAPER = '#fdf8fa';     // 碎片本身
-const GRID  = '#f9e8ef';     // 方格（跟纸只差一点点，密排才不会糊）
-const EDGE  = '#d2566e';     // 碎片的红边
-const TEXT  = '#4a51b0';     // 打字机的蓝
-const MARK  = '#6f63c8';     // 蓝色的箭头/毛刺
+/* 两套配色。做旧不是单纯压个黄色滤镜 —— 纸要暖、要黄，
+   而红线和蓝字会褪色、去饱和，往灰里走 */
+const FRESH = { bg:'#f4f2f4', paper:'#fdf8fa', grid:'#f9e8ef',
+                edge:'#d2566e', text:'#4a51b0', mark:'#6f63c8' };
+const AGED  = { bg:'#dcd4c2', paper:'#f7f0de', grid:'#e2cabd',
+                edge:'#b3605c', text:'#575b85', mark:'#6d6b9c' };
+let aged = true;
+let P = AGED;
 
 const LETTER = (
 "My dearest, — I have started this letter eleven times and each time the "+
@@ -296,6 +298,7 @@ function spanAt(poly, y){
   return hi>lo ? [lo,hi] : null;
 }
 function refresh(){
+  rnd = mulberry32(0xA5E ^ shards.length);
   /* 阅读顺序：先左栏从上到下，再右栏。按原始位置排，跟推开多少无关 */
   const mid = PAGE.x + PAGE.w/2;
   const ord = shards.map((s,i)=>{
@@ -321,7 +324,13 @@ function refresh(){
       let t = '';
       for(let k=0;k<n;k++) t += LETTER[(cur+k) % LETTER.length];
       cur += n;
-      lines.push({ x:(x0+x1)/2, y, t });
+      /* 做旧用的随行参数：墨深浅、整行的错位、偶尔卡键 */
+      const ink  = 0.64 + 0.36*Math.pow(rnd(), 0.6);
+      const jx   = (rnd()-0.5)*FS*0.16;
+      const jy   = (rnd()-0.5)*FS*0.13;
+      const stick= rnd() < 0.07;
+      const wob  = stick ? Array.from({length:7}, ()=> (rnd()-0.5)*FS*0.22) : null;
+      lines.push({ x:(x0+x1)/2, y, t, ink, jx, jy, stick, wob });
     }
     s.lines = lines;
   }
@@ -333,7 +342,7 @@ function refresh(){
 function drawMark(m){
   const r = mulberry32(m.s);
   const tx = m.x + Math.cos(m.a)*m.L, ty = m.y + Math.sin(m.a)*m.L;
-  ctx.strokeStyle = MARK; ctx.lineWidth = Math.max(0.5, FS*0.045);
+  ctx.strokeStyle = P.mark; ctx.lineWidth = Math.max(0.5, FS*0.045);
   ctx.globalAlpha = 0.75;
   ctx.beginPath(); ctx.moveTo(m.x,m.y); ctx.lineTo(tx,ty); ctx.stroke();
   /* 箭头 */
@@ -357,6 +366,93 @@ function drawMark(m){
   ctx.globalAlpha = 1;
 }
 
+/* ---------- 做旧图层 ----------
+ * 霉斑、纤维颗粒、折痕、暗角，一次性烤成一张和画布同尺寸的图，
+ * 用 multiply 叠上去。关键是「污渍长在纸上」：每块碎片按自己挪开的量
+ * (ox,oy) 去取样，所以碎片一移开，斑点跟着走，缝两侧的纹理对不上 ——
+ * 这才像一张真的被撕碎的旧纸，而不是蒙了一层脏玻璃。
+ */
+const ageCv = document.createElement('canvas');
+const actx  = ageCv.getContext('2d');
+
+function buildAge(){
+  ageCv.width=W; ageCv.height=H;
+  const a=actx;
+  a.globalCompositeOperation='source-over';
+  a.fillStyle='#ffffff'; a.fillRect(0,0,W,H);
+  const r = mulberry32(20260919);
+  const U = Math.min(W,H);
+
+  /* 大片不匀的暖色底 —— 纸不会整张一个颜色 */
+  for(let i=0;i<18;i++){
+    const x=r()*W, y=r()*H, rad=U*(0.10+r()*0.34);
+    const g=a.createRadialGradient(x,y,0,x,y,rad);
+    const al=0.018+r()*0.032;
+    g.addColorStop(0,'rgba(196,166,116,'+al+')');
+    g.addColorStop(1,'rgba(196,166,116,0)');
+    a.fillStyle=g; a.fillRect(x-rad,y-rad,rad*2,rad*2);
+  }
+  /* 几块大的水渍 */
+  for(let i=0;i<5;i++){
+    const x=r()*W, y=r()*H, rad=U*(0.05+r()*0.10);
+    const g=a.createRadialGradient(x,y,rad*0.35,x,y,rad);
+    g.addColorStop(0,  'rgba(168,126,68,0.030)');
+    g.addColorStop(0.82,'rgba(158,112,56,0.075)');
+    g.addColorStop(1,  'rgba(158,112,56,0)');
+    a.fillStyle=g; a.fillRect(x-rad,y-rad,rad*2,rad*2);
+  }
+  /* 霉斑：一簇一簇的小点，不是均匀撒的 */
+  for(let c=0;c<40;c++){
+    const cx=r()*W, cy=r()*H, spread=U*(0.012+r()*0.055);
+    const n=3+(r()*9|0);
+    for(let i=0;i<n;i++){
+      const x=cx+(r()-0.5)*spread*2, y=cy+(r()-0.5)*spread*2;
+      const rad=U*(0.0022+r()*0.0085);
+      const g=a.createRadialGradient(x,y,0,x,y,rad);
+      const al=0.14+r()*0.30;
+      g.addColorStop(0,'rgba(150,104,52,'+al+')');
+      g.addColorStop(0.55,'rgba(158,116,66,'+(al*0.55)+')');
+      g.addColorStop(1,'rgba(158,116,66,0)');
+      a.fillStyle=g; a.fillRect(x-rad,y-rad,rad*2,rad*2);
+    }
+  }
+  /* 折痕：一条暗、紧挨着一条亮，才像纸被折过而不是画了条线 */
+  for(let i=0;i<3;i++){
+    const vert = r()<0.55;
+    const t = 0.22+r()*0.56;
+    const w = U*0.010;
+    const x0 = vert ? W*t : 0, y0 = vert ? 0 : H*t;
+    const g = vert ? a.createLinearGradient(x0-w,0,x0+w,0)
+                   : a.createLinearGradient(0,y0-w,0,y0+w);
+    g.addColorStop(0,   'rgba(140,110,70,0)');
+    g.addColorStop(0.42,'rgba(140,110,70,0.16)');
+    g.addColorStop(0.52,'rgba(255,252,246,0.55)');
+    g.addColorStop(1,   'rgba(140,110,70,0)');
+    a.fillStyle=g;
+    if(vert) a.fillRect(x0-w,0,w*2,H); else a.fillRect(0,y0-w,W,w*2);
+  }
+  /* 暗角 */
+  const vg=a.createRadialGradient(W/2,H/2,U*0.30, W/2,H/2,U*0.86);
+  vg.addColorStop(0,'rgba(120,96,60,0)');
+  vg.addColorStop(1,'rgba(120,96,60,0.11)');
+  a.fillStyle=vg; a.fillRect(0,0,W,H);
+
+  /* 纤维颗粒：半分辨率生成再放大，又便宜又比逐像素噪点柔和 */
+  const nw=Math.max(1,W>>1), nh=Math.max(1,H>>1);
+  const nz=document.createElement('canvas'); nz.width=nw; nz.height=nh;
+  const nctx=nz.getContext('2d');
+  const img=nctx.createImageData(nw,nh), d=img.data;
+  for(let i=0;i<nw*nh;i++){
+    const v=240+((r()*16)|0);
+    d[i*4]=v; d[i*4+1]=v-1; d[i*4+2]=v-4; d[i*4+3]=255;
+  }
+  nctx.putImageData(img,0,0);
+  a.globalAlpha=0.42;
+  a.imageSmoothingEnabled=true;
+  a.drawImage(nz,0,0,W,H);
+  a.globalAlpha=1;
+}
+
 /* ---------- 画 ---------- */
 function shardPath(s){
   ctx.beginPath();
@@ -365,7 +461,7 @@ function shardPath(s){
   ctx.closePath();
 }
 function draw(){
-  ctx.fillStyle=BG; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=P.bg; ctx.fillRect(0,0,W,H);
   ctx.font = FS+'px "Courier New",Courier,ui-monospace,monospace';
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
 
@@ -373,12 +469,21 @@ function draw(){
     /* 没有 ctx.transform —— 碎片只是个窗口，纸纹和字都画在屏幕坐标里，
        所以碎片转了，格子还是正的、字还是横的（参照就是这样） */
     shardPath(s);
+    if(aged){
+      /* 先带阴影铺一次底：纸片是摞在桌面上的，不是印在桌面上的 */
+      ctx.save();
+      ctx.shadowColor='rgba(112,92,62,0.34)';
+      ctx.shadowBlur=INSET*1.35;
+      ctx.shadowOffsetX=INSET*0.30; ctx.shadowOffsetY=INSET*0.42;
+      ctx.fillStyle=P.paper; ctx.fill();
+      ctx.restore();
+    }
     ctx.save();
     ctx.clip();
-    ctx.fillStyle=PAPER; ctx.fill();
+    ctx.fillStyle=P.paper; ctx.fill();
 
     /* 方格按纸的原点排，所以碎片一推开，格子就对不上了 —— 参照里正是这样 */
-    ctx.strokeStyle=GRID; ctx.lineWidth=DPR*0.5;
+    ctx.strokeStyle=P.grid; ctx.lineWidth=DPR*0.5;
     ctx.beginPath();
     let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
     for(let i=0;i<s.poly.length;i+=2){
@@ -392,16 +497,50 @@ function draw(){
     for(let y=g0y;y<=maxY;y+=GRIDPX){ ctx.moveTo(minX,y); ctx.lineTo(maxX,y); }
     ctx.stroke();
 
-    ctx.fillStyle=TEXT;
-    if(s.lines) for(const l of s.lines) ctx.fillText(l.t, l.x, l.y);
+    /* 字：一行行深浅不一，偶尔一行像卡了键，逐字抖一下 */
+    ctx.fillStyle=P.text;
+    if(s.lines) for(const l of s.lines){
+      if(aged){
+        ctx.globalAlpha = l.ink;
+        if(l.stick){
+          ctx.textAlign='left';
+          let x = l.x - l.t.length*CW/2;
+          for(let k=0;k<l.t.length;k++){
+            ctx.fillText(l.t[k], x + l.jx, l.y + l.jy + l.wob[k%l.wob.length]);
+            x += CW;
+          }
+          ctx.textAlign='center';
+        }else{
+          ctx.fillText(l.t, l.x + l.jx, l.y + l.jy);
+        }
+      }else{
+        ctx.fillText(l.t, l.x, l.y);
+      }
+    }
+    ctx.globalAlpha = 1;
 
     for(const m of s.marks) drawMark(m);
+
+    if(aged){
+      /* 整张纸的旧痕，按这块纸挪开的量取样 */
+      ctx.globalCompositeOperation='multiply';
+      ctx.drawImage(ageCv, s.ox, s.oy);
+      ctx.globalCompositeOperation='source-over';
+      /* 断口内缘泛黄：裁剪还在，所以描出去的那一半会被切掉，
+         剩下的正好是一圈由外向内淡开的黄 —— canvas 没有内阴影，只能这么做 */
+      shardPath(s);
+      ctx.lineJoin='round';
+      for(const [w,al] of [[INSET*2.6,0.05],[INSET*1.5,0.07],[INSET*0.7,0.09]]){
+        ctx.strokeStyle='rgba(148,112,62,'+al+')';
+        ctx.lineWidth=Math.max(1,w); ctx.stroke();
+      }
+    }
     ctx.restore();   // 解除裁剪
 
     /* 必须重建一次路径：上面画格子时 beginPath 已经把轮廓冲掉了，
        而 restore() 只还原状态、不还原当前路径 */
     shardPath(s);
-    ctx.strokeStyle=EDGE; ctx.lineWidth=Math.max(0.7, DPR*0.85);
+    ctx.strokeStyle=P.edge; ctx.lineWidth=Math.max(0.7, DPR*0.85);
     ctx.lineJoin='round'; ctx.stroke();
   }
 }
@@ -436,6 +575,7 @@ addEventListener('keydown', e=>{
   if(e.code==='Space'){ e.preventDefault(); reset(); draw(); idle=0; }
   else if(e.key==='a'||e.key==='A'){ shatter(26); idle=0; }
   else if(e.key==='s'||e.key==='S'){ save(); }
+  else if(e.key==='w'||e.key==='W'){ aged=!aged; P = aged?AGED:FRESH; draw(); }
 });
 function shatter(n){
   for(let k=0;k<n;k++){
@@ -468,6 +608,7 @@ function resize(){
   H = cv.height = Math.round(innerHeight*DPR);
   cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px';
   layout();
+  buildAge();
   reset();
   draw();
 }
