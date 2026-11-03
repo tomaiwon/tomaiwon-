@@ -523,7 +523,10 @@ function resample(raw, ds) {
   return { p, t, s, S: L };
 }
 
+// Keep the head clear of the easel's ledge and top clamp.
+const edgeMargin = P => Math.max(P.width * .6, HEAD[P.tool].hx * PXM + 8);
 function buildStroke(x, y, P, R) {
+  const m = edgeMargin(P);
   const lab0 = srgb2lab(...sampleRef(P.level, x, y)), inTower = regionAt(x, y) === R_TOWER, fence = P !== PASSES[0];
   const len = lerp(P.len[0], P.len[1], R()), jit = gauss() * P.jitter;
   const step = Math.max(3, P.width * .16);
@@ -536,7 +539,7 @@ function buildStroke(x, y, P, R) {
       const turn = clamp(Math.atan2(vx * ny - vy * nx, vx * nx + vy * ny), -P.maxTurn, P.maxTurn);
       const ca = Math.cos(turn), sa = Math.sin(turn); [vx, vy] = [vx * ca - vy * sa, vx * sa + vy * ca];
       const qx = px + vx * step, qy = py + vy * step;
-      if (qx < -12 || qx > PW + 12 || qy < -12 || qy > PH + 12) break;
+      if (qx < -12 || qx > PW + 12 || qy < m || qy > PH - m) break;
       if (fence && (regionAt(qx, qy) === R_TOWER) !== inTower) break;
       if (L > len * .18 && dE(lab0, srgb2lab(...sampleRef(P.level, qx, qy))) > P.stop) break;
       px = qx; py = qy; L += step; pts.push(px, py);
@@ -546,7 +549,7 @@ function buildStroke(x, y, P, R) {
   const f = march(1), b = march(-1), raw = [];
   for (let i = b.length - 2; i >= 0; i -= 2) raw.push(b[i], b[i + 1]);
   raw.push(x, y, ...f);
-  if (raw.length < 4) { const a = fieldAngle(x / PW, y / PH, regionAt(x, y)); raw.push(x + Math.cos(a) * step * 2, y + Math.sin(a) * step * 2); }
+  if (raw.length < 4) { const a = fieldAngle(x / PW, y / PH, regionAt(x, y)); raw.push(x + Math.cos(a) * step * 2, clamp(y + Math.sin(a) * step * 2, m, PH - m)); }
   const st = resample(raw, clamp(P.width * .2, 3, 10));
   st.width = P.width * (.85 + R() * .3);
   st.tool = P.tool; st.tower = inTower;
@@ -594,9 +597,9 @@ function planPass(pi) {
   const err = new Float32Array(LW * LH);
   for (let i = 0; i < LW * LH; i++) err[i] = Math.hypot(cur.lab[i * 3] - refL[i * 3], cur.lab[i * 3 + 1] - refL[i * 3 + 1], cur.lab[i * 3 + 2] - refL[i * 3 + 2]);
   const want = Math.round(P.quota * P.over), s = Math.sqrt(PW * PH / want);
-  const nx = Math.ceil(PW / s), ny = Math.ceil(PH / s), cells = [];
+  const nx = Math.ceil(PW / s), ny = Math.ceil(PH / s), cells = [], m = edgeMargin(P);
   for (let gy = 0; gy < ny; gy++) for (let gx = 0; gx < nx; gx++) {
-    const x = clamp((gx + .5 + (R() - .5) * .9) * s, 2, PW - 2), y = clamp((gy + .5 + (R() - .5) * .9) * s, 2, PH - 2);
+    const x = clamp((gx + .5 + (R() - .5) * .9) * s, 2, PW - 2), y = clamp((gy + .5 + (R() - .5) * .9) * s, m, PH - m);
     const lx = (x / PW * LW) | 0, ly = (y / PH * LH) | 0;
     let e = 0, c = 0;
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
@@ -845,11 +848,12 @@ for (const [x, w] of [[-2.45, .8], [-1.25, .8]]) {
   box(w - .06, .56, .02, M.blue, bench, x, .5, -1.4);
   cyl(.012, .012, .02, M.black, bench, x + w / 2 - .1, .62, -1.385).rotation.x = Math.PI / 2;
 }
-const peg = box(2.2, .95, .03, std(0xffffff, .7, .2, { map: canvasTex(pegTexture()) }), bench, -1.835, BENCH_TOP + .475, -2.08);
-box(2.22, .025, .34, M.metal, bench, -1.835, 1.92, -1.93);
-for (const x of [-2.9, -.78]) box(.03, .14, .3, M.metal, bench, x, 1.85, -1.93);
+const SHELF_Y = 2.12, SHELF_FRONT = -1.86;   // high and shallow, so the arm passes under it
+const peg = box(2.2, SHELF_Y - BENCH_TOP, .03, std(0xffffff, .7, .2, { map: canvasTex(pegTexture()) }), bench, -1.835, (BENCH_TOP + SHELF_Y) / 2, -2.08);
+box(2.22, .025, .24, M.metal, bench, -1.835, SHELF_Y, -1.98);
+for (const x of [-2.9, -.78]) box(.03, .14, .2, M.metal, bench, x, SHELF_Y - .07, -1.98);
 function makeBin(parent, x) {
-  const g = new THREE.Group(); g.position.set(x, 1.933, -1.93); parent.add(g);
+  const g = new THREE.Group(); g.position.set(x, SHELF_Y + .013, -1.98); g.scale.z = .7; parent.add(g);
   const prof = new THREE.Shape(); prof.moveTo(-.15, 0); prof.lineTo(.15, 0); prof.lineTo(.15, .075); prof.lineTo(-.15, .17); prof.closePath();
   const side = new THREE.ExtrudeGeometry(prof, { depth: .008, bevelEnabled: false });
   for (const sx of [-.15, .142]) { const s = mesh(side, M.binBlue, g, sx, 0, 0); s.rotation.y = Math.PI / 2; s.position.z = 0; s.position.x = sx; }
@@ -906,18 +910,20 @@ PIG.forEach((p, i) => { // dropper bottles
 }
 
 // ---------- solvent jar & tool rack ----------
-const JAR = { x: -.86, z: -1.47, top: BENCH_TOP + .11 };
+const JAR = { x: -.98, z: -1.47, top: BENCH_TOP + .11 };
 {
   const g = new THREE.Group(); g.position.set(JAR.x, BENCH_TOP, JAR.z); scene.add(g);
-  mesh(new THREE.CylinderGeometry(.042, .04, .11, 28, 1, true), std(0xc8dce4, .08, 0, { transparent: true, opacity: .32, side: THREE.DoubleSide }), g, 0, .055, 0, false, false);
-  cyl(.039, .038, .072, std(0x6e6a55, .2, 0, { transparent: true, opacity: .75 }), g, 0, .036, 0);
+  mesh(new THREE.CylinderGeometry(.062, .06, .11, 32, 1, true), std(0xc8dce4, .08, 0, { transparent: true, opacity: .32, side: THREE.DoubleSide }), g, 0, .055, 0, false, false);
+  cyl(.059, .058, .072, std(0x6e6a55, .2, 0, { transparent: true, opacity: .75 }), g, 0, .036, 0);
 }
-const RACK = { z: -1.80, tipY: BENCH_TOP + .02, xs: [-1.04, -.97, -.90, -.83, -.76] };
+// Runs front to back along the bench's right edge, out of the way of the palette and under nothing.
+const RACK = { x: -.79, tipY: BENCH_TOP + .02, zs: [-1.44, -1.515, -1.59, -1.665, -1.74], posts: [-1.395, -1.785] };
+const SLOT = { round: 0, filbert: 1, wide: 2, flat: 3, knife: 4 };   // the wide brush sits between two slim ones
 {
   const g = new THREE.Group(); scene.add(g);
-  box(.38, .012, .12, M.orange, g, -.9, BENCH_TOP + .006, RACK.z);
-  for (const x of [-1.083, -.717]) box(.016, .3, .03, M.orange, g, x, BENCH_TOP + .15, RACK.z);
-  box(.38, .018, .05, M.orange, g, -.9, RACK.tipY + .27, RACK.z);
+  box(.12, .012, .406, M.orange, g, RACK.x, BENCH_TOP + .006, -1.59);
+  for (const z of RACK.posts) box(.066, .3, .016, M.orange, g, RACK.x, BENCH_TOP + .15, z);
+  for (const dx of [-.025, .025]) box(.012, .018, .406, M.orange, g, RACK.x + dx, RACK.tipY + .27, -1.59);   // two rails; handles hang in the gap
 }
 
 // ---------- easel & canvas ----------
@@ -928,13 +934,15 @@ const paintTex = canvasTex(paintCv);
 const heightTex = canvasTex(heightCv, null, false);
 const canvasMat = std(0xffffff, .5, 0, { map: paintTex, bumpMap: heightTex, bumpScale: 1.6 });
 const canvasFace = mesh(new THREE.PlaneGeometry(CW, CH), canvasMat, canvasGroup, 0, 0, .0128, false, true);
-beam(V(0, -1.05, -.04), V(0, 1.07, -.04), .05, .035, M.easel, canvasGroup);
-box(1.32, .035, .1, M.easel, canvasGroup, 0, -.47, .02);
-box(.15, .045, .1, M.easel, canvasGroup, 0, .476, .005);
-box(.09, .06, .06, M.easel, canvasGroup, 0, 1.08, -.04);
-for (const s of [-1, 1]) beam(V(s * .5, 0, .05), V(s * .06, 2.42, -.16), .045, .032, M.easel, easel);
-beam(V(0, 0, -.78), V(0, 2.25, -.12), .045, .032, M.easel, easel);
-beam(V(-.409, .5, .0065), V(.409, .5, .0065), .03, .025, M.easel, easel);
+// Easel. The frame sits well behind the canvas (8 cm and more) so it can never bleed through the painted face.
+const EASEL = { mastZ: -.08, legFoot: -.05, legTop: -.25, backFoot: -.85, backTop: -.2 };
+beam(V(0, -1.05, EASEL.mastZ), V(0, 1.07, EASEL.mastZ), .05, .035, M.easel, canvasGroup).castShadow = false;
+box(1.32, .035, .14, M.easel, canvasGroup, 0, -.47, 0);
+box(.15, .045, .14, M.easel, canvasGroup, 0, .476, -.01);
+box(.09, .06, .06, M.easel, canvasGroup, 0, 1.08, EASEL.mastZ);
+for (const s of [-1, 1]) beam(V(s * .5, 0, EASEL.legFoot), V(s * .06, 2.42, EASEL.legTop), .045, .032, M.easel, easel).castShadow = false;
+beam(V(0, 0, EASEL.backFoot), V(0, 2.25, EASEL.backTop), .045, .032, M.easel, easel).castShadow = false;
+{ const t = .5 / 2.42, x = .5 - .44 * t, z = lerp(EASEL.legFoot, EASEL.legTop, t); beam(V(-x, .5, z), V(x, .5, z), .03, .025, M.easel, easel); }
 easel.updateMatrixWorld(true);
 
 // ---------- light stand ----------
@@ -1005,7 +1013,7 @@ function zPart(geo, mat, parent, z0, z1, rx = 0) { const m = mesh(geo, mat, pare
 function makeTool(kind) {
   const g = new THREE.Group(), L = TOOL_LEN;
   zPart(new THREE.CylinderGeometry(.031, .031, .09, 28), M.black, g, 0, .09);
-  zPart(new THREE.CylinderGeometry(.033, .033, .01, 28), M.dark, g, .085, .095);
+  zPart(new THREE.CylinderGeometry(.033, .033, .01, 28), M.dark, g, 0, .01);
   const tipMat = std(rgbStr(TAN), .55);
   const bristle = std(rgbStr(TAN), .7);
   const handle = (col, r0, r1, z1) => zPart(new THREE.CylinderGeometry(r1, r0, z1 - .09, 16), std(col, .35), g, .09, z1);
@@ -1026,9 +1034,9 @@ function makeTool(kind) {
     zPart(new THREE.ConeGeometry(.0055, L - .34, 12), tipMat, g, .34, L, Math.PI);
   } else { // palette knife
     handle(0x5a2e1a, .011, .01, .24); zPart(new THREE.CylinderGeometry(.009, .011, .02, 14), std(0xb08a3a, .3, .8), g, .24, .26);
-    beam(V(0, 0, .26), V(0, .012, .305), .004, .003, M.steel, g);
+    beam(V(0, 0, .26), V(0, 0, .305), .004, .003, M.steel, g);
     const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.quadraticCurveTo(.022, .015, .017, .05); sh.quadraticCurveTo(.004, .066, 0, .068); sh.quadraticCurveTo(-.004, .066, -.017, .05); sh.quadraticCurveTo(-.022, .015, 0, 0);
-    const blade = mesh(new THREE.ExtrudeGeometry(sh, { depth: .0012, bevelEnabled: false }), std(0xc4cad2, .22, .95), g, 0, .012, .302);
+    const blade = mesh(new THREE.ExtrudeGeometry(sh, { depth: .0012, bevelEnabled: false }), std(0xc4cad2, .22, .95), g, 0, .0006, .302);
     blade.rotation.x = Math.PI / 2; blade.userData.tip = true;
     tipMat.color.set(0xc4cad2);
   }
@@ -1037,12 +1045,12 @@ function makeTool(kind) {
 }
 const toolSet = {};
 TOOL_ORDER.forEach((kind, i) => {
-  const t = makeTool(kind); toolSet[kind] = t; t.slot = i; scene.add(t.g);
+  const t = makeTool(kind); toolSet[kind] = t; t.slot = SLOT[kind]; scene.add(t.g);
 });
-const qDown = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V(1, 0, 0), V(0, 0, 1), V(0, -1, 0)));
+const qDown = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V(0, 0, 1), V(-1, 0, 0), V(0, -1, 0)));
 function rackTool(kind) { // hang it back on the rack
   const t = toolSet[kind]; scene.add(t.g);
-  t.g.position.set(RACK.xs[t.slot], RACK.tipY + TOOL_LEN, RACK.z); t.g.quaternion.copy(qDown);
+  t.g.position.set(RACK.x, RACK.tipY + TOOL_LEN, RACK.zs[t.slot]); t.g.quaternion.copy(qDown);
 }
 function holdTool(kind) { const t = toolSet[kind]; mount.add(t.g); t.g.position.set(0, 0, 0); t.g.quaternion.identity(); }
 TOOL_ORDER.forEach(rackTool);
@@ -1092,13 +1100,49 @@ const CB = (() => { // canvas basis in world
 function canvasPoint(x, y, off) {
   return CB.o.clone().addScaledVector(CB.right, (x / PW - .5) * CW).addScaledVector(CB.up, (.5 - y / PH) * CH).addScaledVector(CB.normal, off);
 }
+// ---------- tool heads: one model for contact and for collisions ----------
+// half-width along the tool's X, half-thickness along Y, where the head starts (from the coupler), width profile 0..1
+const HEAD = {
+  wide: { hx: .036, hy: .007, z0: .27, w: () => 1 },
+  flat: { hx: .021, hy: .005, z0: .28, w: () => 1 },
+  filbert: { hx: .013, hy: .004, z0: .29, w: f => Math.sqrt(Math.max(.06, 1 - ((f - .55) / .5) ** 2)) },
+  knife: { hx: .017, hy: .002, z0: .302, w: f => f < .7 ? .25 + f : (1 - f) / .3 * .95 },
+  round: { hx: .006, hy: .006, z0: .29, w: f => 1 - f * .9 },
+};
+function toolPoints(kind) { // [x, y, z, r, isHead] in the wrist frame (z along the tool)
+  const pts = [];
+  for (let z = .07; z < ROD; z += .04) pts.push([0, 0, z, .011, 0]);
+  if (!kind) { pts.push([0, 0, ROD, .022, 0]); return pts; }
+  for (const z of [.031, .059]) pts.push([0, 0, ROD + z, .031, 0]);   // chuck
+  const h = HEAD[kind];
+  for (let z = .1; z < h.z0; z += .03) pts.push([0, 0, ROD + z, .013, 0]);
+  const across = Math.max(2, Math.ceil(2 * h.hx / (1.4 * h.hy)));
+  for (let i = 0; i <= 5; i++) {
+    const f = i / 5, z = lerp(h.z0, TOOL_LEN - h.hy, f), hw = Math.max(0, h.hx * h.w(f) - h.hy);
+    for (let j = 0; j <= across; j++) pts.push([lerp(-hw, hw, j / across), 0, ROD + z, h.hy, 1]);
+  }
+  return pts;
+}
+const TOOL_PTS = { none: toolPoints(null) };
+TOOL_ORDER.forEach(k => { TOOL_PTS[k] = toolPoints(k); });
+const UP = V(0, 1, 0);
+// Raise the tip along the surface normal until no part of the head is below the surface.
+function lifted(k, n, kind) {
+  if (!kind) return k;
+  const q = quatFrom(k.D, k.X), X = V(1, 0, 0).applyQuaternion(q), Y = V(0, 1, 0).applyQuaternion(q), D = V(0, 0, 1).applyQuaternion(q);
+  const xn = X.dot(n), yn = Y.dot(n), dn = D.dot(n);
+  let need = 0;
+  for (const [x, y, z, r, head] of TOOL_PTS[kind]) if (head) need = Math.max(need, r - (x * xn + y * yn + (z - LT) * dn));
+  k.P.addScaledVector(n, need + .0015);
+  return k;
+}
 function canvasTip(st, s, off) {
-  const q = strokeAt(st, s), P = canvasPoint(q.x, q.y, off + .001);
+  const q = strokeAt(st, s), P = canvasPoint(q.x, q.y, off);
   const tw = CB.right.clone().multiplyScalar(q.tx).addScaledVector(CB.up, -q.ty);
   const nw = CB.right.clone().multiplyScalar(-q.ty).addScaledVector(CB.up, -q.tx);
   const fromS = P.clone().sub(SH).normalize();
   const D = CB.normal.clone().multiplyScalar(-.55).addScaledVector(fromS, .45).addScaledVector(tw, -.3).normalize();
-  return { P, D, X: nw };
+  return lifted({ P, D, X: nw }, CB.normal, state.tool);
 }
 function benchTip(x, y, z, Xdir) {
   const P = V(x, y, z), fromS = P.clone().sub(SH).normalize();
@@ -1106,16 +1150,106 @@ function benchTip(x, y, z, Xdir) {
   const X = Xdir || V(-D.z, 0, D.x);
   return { P, D, X };
 }
-const rackTip = (slot, lift) => ({ P: V(RACK.xs[slot], RACK.tipY + lift, RACK.z), D: DOWN.clone(), X: V(1, 0, 0) });
+const paletteTip = (x, y, z, Xdir) => lifted(benchTip(x, y, z, Xdir), UP, state.tool);
+const rackTip = (slot, lift) => ({ P: V(RACK.x, RACK.tipY + lift, RACK.zs[slot]), D: DOWN.clone(), X: V(0, 0, 1) });
 const solve = k => solvePose(k.P, k.D, k.X);
-const REST = solve({ P: V(-.62, 1.12, -1.02), D: V(.114, -.852, -.511).normalize(), X: V(1, 0, 0) });
+// Tucked pose: wrist pulled in beside the robot's head, tool hanging straight down next to its body.
+// Turning on the spot from here reaches nothing in the studio.
+function tucked(yaw) {
+  const dir = V(Math.cos(yaw), 0, Math.sin(yaw));
+  const W = SH.clone().addScaledVector(dir, .34).add(V(0, .36, 0));
+  const D = DOWN.clone().addScaledVector(dir, .1).normalize();
+  return solve({ P: W.clone().addScaledVector(D, LT), D, X: V(-dir.z, 0, dir.x) });
+}
+const REST = tucked(-1.2);
+
+// ---------- collision model ----------
+// The robot is sampled as spheres along its links; the studio as boxes, cylinders and rods.
+const OBS = [];
+const canvasInv = canvasGroup.matrixWorld.clone().invert();
+const obBox = (tag, b, inv) => OBS.push({ tag, k: 0, b, inv });
+const obCyl = (tag, x, z, r, y0, y1, tool) => OBS.push({ tag, k: 1, x, z, r, y0, y1, tool });
+const obRod = (tag, a, b, r) => OBS.push({ tag, k: 2, a, b, r });
+const obRing = (tag, x, z, r0, r1, y0, y1) => OBS.push({ tag, k: 3, x, z, r0, r1, y0, y1 });
+obBox('bench', [-2.95, .85, -2.1, -.68, BENCH_TOP, -1.35]);
+obBox('palette', [PAL.x0, BENCH_TOP, PAL.z0, PAL.x0 + PAL.w, PAL.top, PAL.z0 + PAL.d]);
+BLOBS.forEach(b => obRod('blob', V(b.x, PAL.top + .007, b.z), V(b.x, PAL.top + .007, b.z), .026));
+obBox('bottles', [-2.0, BENCH_TOP, -1.997, -1.1, BENCH_TOP + .137, -1.953]);
+obCyl('tub', -2.18, -1.62, .064, BENCH_TOP, BENCH_TOP + .105);
+obBox('pegboard', [-2.95, BENCH_TOP, -2.095, -.735, SHELF_Y, -2.065]);
+obBox('shelf', [-2.95, SHELF_Y - .0125, -2.1, -.72, SHELF_Y + .19, SHELF_FRONT]);
+obRing('jar', JAR.x, JAR.z, .058, .063, BENCH_TOP, JAR.top);
+obBox('rack', [RACK.x - .06, BENCH_TOP, -1.793, RACK.x + .06, BENCH_TOP + .012, -1.387]);
+RACK.posts.forEach(z => obBox('rack', [RACK.x - .033, BENCH_TOP, z - .008, RACK.x + .033, BENCH_TOP + .3, z + .008]));
+[-1, 1].forEach(sd => obBox('rack', [RACK.x + sd * .025 - .006, RACK.tipY + .261, -1.793, RACK.x + sd * .025 + .006, RACK.tipY + .279, -1.387]));
+TOOL_ORDER.forEach(kind => { // tools hanging on the rack (ignored while held)
+  const z = RACK.zs[SLOT[kind]], h = HEAD[kind], top = RACK.tipY + TOOL_LEN;
+  obCyl('rack:' + kind, RACK.x, z, .033, top - .09, top, kind);
+  obCyl('rack:' + kind, RACK.x, z, .013, top - h.z0, top - .09, kind);
+  OBS.push({ tag: 'rack:' + kind, k: 0, tool: kind, b: [RACK.x - h.hy, RACK.tipY, z - h.hx, RACK.x + h.hy, top - h.z0, z + h.hx] });
+});
+obBox('canvas', [-.605, -.455, -.0125, .605, .455, .0128], canvasInv);
+obBox('easel', [-.66, -.4875, -.07, .66, -.4525, .07], canvasInv);         // ledge
+obBox('easel', [-.075, .4535, -.08, .075, .4985, .06], canvasInv);         // top clamp
+obBox('easel', [-.025, -1.05, EASEL.mastZ - .0175, .025, 1.11, EASEL.mastZ + .0175], canvasInv);   // mast and crown
+for (const sd of [-1, 1]) obRod('easel', easel.localToWorld(V(sd * .5, 0, EASEL.legFoot)), easel.localToWorld(V(sd * .06, 2.42, EASEL.legTop)), .026);
+obRod('easel', easel.localToWorld(V(0, 0, EASEL.backFoot)), easel.localToWorld(V(0, 2.25, EASEL.backTop)), .026);
+for (const [r, y0, y1] of [[.3, 0, .36], [.19, .36, .97], [.13, .97, 1.17], [.1, 1.17, 1.28]]) obCyl('body', RB.x, RB.z, r, y0, y1);
+
+const _ov = new THREE.Vector3();
+function segDist(x, y, z, a, b) {
+  const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z, l2 = abx * abx + aby * aby + abz * abz;
+  const t = l2 ? clamp(((x - a.x) * abx + (y - a.y) * aby + (z - a.z) * abz) / l2, 0, 1) : 0;
+  return Math.hypot(x - a.x - abx * t, y - a.y - aby * t, z - a.z - abz * t);
+}
+function obDist(o, x, y, z) {
+  if (o.inv) { _ov.set(x, y, z).applyMatrix4(o.inv); x = _ov.x; y = _ov.y; z = _ov.z; }
+  if (o.k === 0) {
+    const b = o.b, dx = Math.max(b[0] - x, x - b[3]), dy = Math.max(b[1] - y, y - b[4]), dz = Math.max(b[2] - z, z - b[5]);
+    return dx > 0 || dy > 0 || dz > 0 ? Math.hypot(Math.max(dx, 0), Math.max(dy, 0), Math.max(dz, 0)) : Math.max(dx, dy, dz);
+  }
+  if (o.k === 2) return segDist(x, y, z, o.a, o.b) - o.r;
+  const rr = Math.hypot(x - o.x, z - o.z), dy = Math.max(o.y0 - y, y - o.y1);
+  const dr = o.k === 1 ? rr - o.r : Math.max(o.r0 - rr, rr - o.r1);
+  return dr > 0 || dy > 0 ? Math.hypot(Math.max(dr, 0), Math.max(dy, 0)) : Math.max(dr, dy);
+}
+const _E = new THREE.Vector3(), _W = new THREE.Vector3(), _P = new THREE.Vector3();
+// Returns the first contact {tag, part, depth} or null. ex: a tag whose contact is intended (e.g. dipping into a blob).
+function collides(p, kind, ex, margin = -.001) {
+  const c = Math.cos(p.yaw), s = Math.sin(p.yaw), er = L1 * Math.cos(p.a1);
+  _E.set(SH.x + er * c, SH.y + L1 * Math.sin(p.a1), SH.z + er * s);
+  wristOf(p, _W);
+  const pts = [];
+  for (let t = .16; t <= 1; t += .07) pts.push([lerp(SH.x, _E.x, t), lerp(SH.y, _E.y, t), lerp(SH.z, _E.z, t), .06, 'upper']);
+  for (let t = 0; t <= 1; t += .07) pts.push([lerp(_E.x, _W.x, t), lerp(_E.y, _W.y, t), lerp(_E.z, _W.z, t), .052, 'fore']);
+  for (const o of [-.035, 0, .035]) pts.push([_E.x - s * o, _E.y, _E.z + c * o, .07, 'elbow']);   // elbow housing is wider than the links
+  pts.push([_W.x, _W.y, _W.z, .05, 'wrist']);
+  for (const [x, y, z, r, head] of TOOL_PTS[kind || 'none']) {
+    _P.set(x, y, z).applyQuaternion(p.q).add(_W);
+    pts.push([_P.x, _P.y, _P.z, r, head ? 'head' : 'tool', z]);
+  }
+  for (const [x, y, z, r, part, tz] of pts) {
+    for (const o of OBS) {
+      if (o.tool && o.tool === kind) continue;
+      if (part === 'upper' && o.tag === 'body') continue;
+      if (ex && o.tag === ex) continue;
+      const d = obDist(o, x, y, z) - r;
+      if (d < margin) return { tag: o.tag, part, depth: -d };
+    }
+    if (tz > .16) { // the tool must not fold back into the arm itself
+      const d = Math.min(segDist(x, y, z, SH, _E) - .06, segDist(x, y, z, _E, _W) - .052) - r;
+      if (d < margin) return { tag: 'self', part, depth: -d };
+    }
+  }
+  return null;
+}
 
 // ---------- studio state ----------
 const state = {
   status: 'Changing tool', phase: 'tool', pass: 0, passDone: 0, passTotal: PASSES[0].quota,
   strokes: 0, colours: 0, ml: 0, pig: new Float64Array(12), time: 0,
   tool: null, load: 0, dirty: false, mixing: null, current: null, prevRGB: null,
-  finished: false, hoverMM: null, spotNext: 0, paintDirty: true, palDirty: true,
+  finished: false, hoverMM: null, spotNext: 0, paintDirty: true, palDirty: true, at: 'rest',
 };
 const cur = { pose: poseClone(REST) };
 
@@ -1124,8 +1258,38 @@ const J = (status, phase, target, dur, extra) => Object.assign({
   status, phase, dur, begin() { this.A = poseClone(cur.pose); }, pose(t) { return poseLerp(this.A, target, smoother(t)); },
 }, extra);
 const C = (status, phase, dur, tipFn, extra) => Object.assign({ status, phase, dur, pose(t) { return solve(tipFn(t)); } }, extra);
-const jdur = P => .3 + tipOf(cur.pose).distanceTo(P) * .6;
-const moveTo = (status, phase, k, extra) => J(status, phase, solve(k), jdur(k.P), extra);
+
+// ---------- moving without hitting anything ----------
+const RETREAT = .2;
+const frameOf = p => ({ P: tipOf(p), D: V(0, 0, 1).applyQuaternion(p.q), X: V(1, 0, 0).applyQuaternion(p.q) });
+const back = (k, d) => ({ P: k.P.clone().addScaledVector(k.D, -d), D: k.D, X: k.X });
+const yawGap = (a, b) => Math.abs(((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI);
+function pathClear(a, b, kind) {
+  for (let i = 0; i <= 24; i++) if (collides(poseLerp(a, b, i / 24), kind, null, .012)) return false;   // keep 12 mm clear
+  return true;
+}
+// Long moves: slide back out along the tool axis, swing (tucking in if a direct swing would hit), slide in.
+function* travel(status, phase, kB) {
+  const kA = frameOf(cur.pose), A1 = back(kA, RETREAT), B1 = back(kB, RETREAT), kind = state.tool;
+  yield C(status, phase, .2, t => back(kA, RETREAT * smooth(t)), { name: 'retreat' });
+  const pA = solve(A1), pB = solve(B1);
+  if (pathClear(pA, pB, kind)) yield J(status, phase, pB, .3 + A1.P.distanceTo(B1.P) * .55, { name: 'swing' });
+  else {
+    const tA = tucked(pA.yaw), tB = tucked(pB.yaw), gap = yawGap(pA.yaw, pB.yaw);
+    yield J(status, phase, tA, .48, { name: 'tuck' });
+    if (gap > .02) yield J(status, phase, tB, .15 + gap * .3, { name: 'turn' });
+    yield J(status, phase, pB, .48, { name: 'untuck' });
+  }
+  yield C(status, phase, .2, t => back(kB, RETREAT * (1 - smooth(t))), { name: 'advance' });
+}
+// Short moves over a surface: an arc lifted along the surface normal, orientation blended.
+function hop(status, phase, kB, n, arcMax, extra) {
+  const kA = frameOf(cur.pose), dist = kA.P.distanceTo(kB.P), arc = Math.min(arcMax, .02 + dist * .3);
+  return C(status, phase, .1 + dist * .6, t => {
+    const s = smoother(t);
+    return { P: kA.P.clone().lerp(kB.P, s).addScaledVector(n, arc * Math.sin(Math.PI * s)), D: kA.D.clone().lerp(kB.D, s).normalize(), X: kA.X.clone().lerp(kB.X, s) };
+  }, Object.assign({ name: 'hop' }, extra));
+}
 
 // ---------- palette marks ----------
 const palPx = (x, z) => [(x - PAL.x0) * PAL_PXM, (z - PAL.z0) * PAL_PXM];
@@ -1156,36 +1320,45 @@ function drawDab(spot, rgb, t0, t1) {
 }
 
 // ---------- what the robot does ----------
+const RACK_LIFT = .42;   // held tool clears the neighbours' chucks before moving sideways
 function* changeTool(kind) {
   if (state.tool === kind) return;
   const st = 'Changing tool';
   if (state.tool) {
-    const slot = toolSet[state.tool].slot, held = state.tool;
-    yield moveTo(st, 'tool', rackTip(slot, .12));
-    yield C(st, 'tool', .45, t => rackTip(slot, .12 * (1 - smooth(t))), { end() { rackTool(held); state.tool = null; } });
-    yield C(st, 'tool', .35, t => rackTip(slot, .12 * smooth(t)));
+    const held = state.tool, slot = SLOT[held], ex = 'rack:' + held;
+    yield* travel(st, 'tool', rackTip(slot, RACK_LIFT));
+    yield C(st, 'tool', .7, t => rackTip(slot, RACK_LIFT * (1 - smooth(t))), { ex, end() { rackTool(held); state.tool = null; } });
+    yield C(st, 'tool', .35, t => rackTip(slot, .12 * smooth(t)), { ex });
   }
   if (kind) {
-    const slot = toolSet[kind].slot;
-    yield moveTo(st, 'tool', rackTip(slot, .12));
-    yield C(st, 'tool', .45, t => rackTip(slot, .12 * (1 - smooth(t))), { end() { holdTool(kind); state.tool = kind; setTip(kind, TAN); state.dirty = false; } });
-    yield C(st, 'tool', .35, t => rackTip(slot, .12 * smooth(t)));
+    const slot = SLOT[kind], ex = 'rack:' + kind;
+    yield* travel(st, 'tool', rackTip(slot, .12));
+    yield C(st, 'tool', .35, t => rackTip(slot, .12 * (1 - smooth(t))), { ex, end() { holdTool(kind); state.tool = kind; setTip(kind, TAN); state.dirty = false; } });
+    yield C(st, 'tool', .7, t => rackTip(slot, RACK_LIFT * smooth(t)), { ex });
   }
+  state.at = 'rack';
 }
 function* clean() {
-  const st = 'Cleaning brush', jt = (h, a = 0) => benchTip(JAR.x + Math.cos(a) * .012, JAR.top + h, JAR.z + Math.sin(a) * .012);
-  yield moveTo(st, 'clean', jt(.07));
-  yield C(st, 'clean', 1.0, t => jt(t < .2 ? lerp(.07, -.07, smooth(t / .2)) : t > .8 ? lerp(-.07, .07, smooth((t - .8) / .2)) : -.07, t * 3 * TAU),
+  const st = 'Cleaning brush';
+  const jt = (h, a = 0, r = 0) => ({ P: V(JAR.x + Math.cos(a) * r, JAR.top + h, JAR.z + Math.sin(a) * r), D: DOWN.clone(), X: V(1, 0, 0) });
+  yield* travel(st, 'clean', jt(.07));
+  yield C(st, 'clean', 1.0, t => jt(t < .2 ? lerp(.07, -.07, smooth(t / .2)) : t > .8 ? lerp(-.07, .07, smooth((t - .8) / .2)) : -.07, t * 3 * TAU, .01 * Math.sin(Math.PI * t)),
     { end() { setTip(state.tool, TAN); state.dirty = false; } });
+  state.at = 'jar';
+}
+function* goPalette(status, phase, k) {
+  if (state.at === 'palette') yield hop(status, phase, k, UP, .08); else yield* travel(status, phase, k);
+  state.at = 'palette';
 }
 function* mix(cl) {
   const spot = state.spotNext++ % SPOTS.length; cl.spot = spot;
   state.colours++; state.mixing = cl;
-  const amount = cl.ml * 1.12, acc = [];
+  const amount = cl.ml * 1.12, acc = [], across = V(0, 0, 1);   // flat side across the row, so neighbours stay clean
   for (const part of cl.recipe.parts) {
-    const b = BLOBS[part.i], top = PAL.top + .014;
-    yield moveTo('Mixing', 'mix', benchTip(b.x, top + .06, b.z));
-    yield C('Mixing', 'mix', .4, t => benchTip(b.x, top + .06 * (1 - Math.sin(Math.PI * t)), b.z), {
+    const b = BLOBS[part.i], top = PAL.top + .014, dip = t => paletteTip(b.x, top + .06 * (1 - Math.sin(Math.PI * t)), b.z, across);
+    yield* goPalette('Mixing', 'mix', dip(0));
+    yield C('Mixing', 'mix', .4, dip, {
+      ex: 'blob',
       end() {
         const ml = amount * part.w; state.ml += ml; state.pig[part.i] += ml;
         const m = blobMeshes[part.i]; m.scale.copy(m.userData.base).multiplyScalar(Math.max(.55, 1 - state.pig[part.i] / 900));
@@ -1193,28 +1366,30 @@ function* mix(cl) {
       },
     });
     acc.push(part);
-    const now = mixParts(acc), sp = t => { const p = swirlPoint(spot, t), h = t < .1 ? lerp(.05, .003, t / .1) : t > .9 ? lerp(.003, .05, (t - .9) / .1) : .003; return benchTip(p.x, PAL.top + h, p.z, V(-Math.sin(p.a), 0, Math.cos(p.a))); };
-    yield moveTo('Mixing', 'mix', sp(0));
+    const now = mixParts(acc), sp = t => { const p = swirlPoint(spot, t), h = t < .1 ? lerp(.05, .003, t / .1) : t > .9 ? lerp(.003, .05, (t - .9) / .1) : .003; return paletteTip(p.x, PAL.top + h, p.z, V(-Math.sin(p.a), 0, Math.cos(p.a))); };
+    yield* goPalette('Mixing', 'mix', sp(0));
     yield C('Mixing', 'mix', 1.1, sp, { draw(t0, t1) { drawSwirl(spot, now, t0, t1); }, end() { setTip(state.tool, now); } });
   }
   state.current = cl;
 }
 function* load(cl, P) {
-  const s = SPOTS[cl.spot], k = t => benchTip(s.x + .022 * Math.sin(TAU * t), PAL.top + .003 + .05 * (1 - Math.sin(Math.PI * t)), s.z);
-  yield moveTo(P.name, 'load', k(0));
+  const s = SPOTS[cl.spot], k = t => paletteTip(s.x + .022 * Math.sin(TAU * t), PAL.top + .003 + .05 * (1 - Math.sin(Math.PI * t)), s.z);
+  yield* goPalette(P.name, 'load', k(0));
   yield C(P.name, 'load', .55, k, { draw(t0, t1) { if (P.tool !== 'knife') drawDab(cl.spot, cl.rgb, t0, t1); }, end() { setTip(state.tool, cl.rgb); } });
 }
 const HOVER = .035;
 function* stroke(st, cl, P, loadNow) {
   const T = TOOLS[P.tool], a = canvasTip(st, 0, HOVER);
-  yield J(P.name, 'paint', solve(a), .05 + tipOf(cur.pose).distanceTo(a.P) * .5);
-  yield C(P.name, 'paint', .05, t => canvasTip(st, 0, HOVER * (1 - t)));
+  if (state.at === 'canvas') yield hop(P.name, 'paint', a, CB.normal, .1); else yield* travel(P.name, 'paint', a);
+  state.at = 'canvas';
+  yield C(P.name, 'paint', .05, t => canvasTip(st, 0, HOVER * (1 - t)), { name: 'touch' });
   yield C(P.name, 'paint', Math.max(.12, st.S / T.speed), t => canvasTip(st, t * st.S, 0), {
+    name: 'drag',
     begin() { prepareStroke(st, cl, loadNow, state.prevRGB); },
     draw(t0, t1) { drawStroke(st, t0 * st.S, t1 * st.S); state.paintDirty = true; },
     end() { state.strokes++; state.passDone++; st.b = st.k = null; },
   });
-  yield C(P.name, 'paint', .05, t => canvasTip(st, st.S, HOVER * t));
+  yield C(P.name, 'paint', .05, t => canvasTip(st, st.S, HOVER * t), { name: 'lift' });
 }
 function* studio() {
   for (let pi = 0; pi < PASSES.length; pi++) {
@@ -1236,7 +1411,9 @@ function* studio() {
     }
   }
   yield* changeTool(null);
-  yield J('Finished', 'rest', poseClone(REST), 2.2, { end() { state.finished = true; } });
+  yield* travel('Finished', 'rest', frameOf(REST));
+  state.at = 'rest';
+  yield J('Finished', 'rest', poseClone(REST), .3, { end() { state.finished = true; } });
 }
 
 // ---------- simulation clock ----------
@@ -1267,7 +1444,7 @@ function restart() {
   primeCanvas(); primePalette();
   blobMeshes.forEach(m => m.scale.copy(m.userData.base));
   Object.assign(state, { status: 'Changing tool', phase: 'tool', pass: 0, passDone: 0, passTotal: PASSES[0].quota, strokes: 0, colours: 0, ml: 0, time: 0,
-    load: 0, dirty: false, mixing: null, current: null, prevRGB: null, finished: false, spotNext: 0, paintDirty: true, palDirty: true });
+    load: 0, dirty: false, mixing: null, current: null, prevRGB: null, finished: false, spotNext: 0, paintDirty: true, palDirty: true, at: 'rest' });
   state.pig.fill(0);
   TOOL_ORDER.forEach(rackTool); state.tool = null;
   cur.pose = poseClone(livePose()); script = studio(); seg = null;
@@ -1441,7 +1618,20 @@ setTimeout(() => $('boot').remove(), 900);
 
 // test hook: run the studio forward without waiting
 window.__studio = {
-  state, setSpeed, setPaused, setAuto, restart, REF, paintCv, get seg() { return seg; },
+  state, setSpeed, setPaused, setAuto, restart, REF, paintCv, scene, canvasMat, renderer, get seg() { return seg; },
+  // run the whole painting and report every sampled pose where the robot touches something it shouldn't
+  audit(step = .05) {
+    const hits = {}, first = []; let n = 0;
+    while (!state.finished && n < 3e6) {
+      simAdvance(step); n++;
+      const h = collides(livePose(), state.tool, seg?.ex);
+      if (h) {
+        const key = `${state.phase}/${seg?.name || '-'}|${h.part}->${h.tag}`; hits[key] = (hits[key] || 0) + 1;
+        if (!first.some(f => f[0] === key)) first.push([key, +state.time.toFixed(1), +h.depth.toFixed(4)]);
+      }
+    }
+    return { samples: n, time: Math.round(state.time), strokes: state.strokes, hits, first };
+  },
   toPass(p) { let n = 0; while (state.pass < p && !state.finished && n++ < 400) simAdvance(30); return [state.pass, state.strokes]; },
   advance(sec) { simAdvance(sec); state.paintDirty = state.palDirty = true; paintTex.needsUpdate = heightTex.needsUpdate = palTex.needsUpdate = true; },
   shot(name) { forcedShot = name; if (!name) return; tipSmooth.copy(tipOf(livePose())); auto = true; shot = want = name; shotAge = wantAge = 99; const [p, t, f] = SHOTS[name](); camPos.copy(p); camTgt.copy(t); camFov = f; },
