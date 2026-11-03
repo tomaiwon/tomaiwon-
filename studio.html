@@ -1,0 +1,1451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gale Light Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Full-bleed 3D studio; glass HUD cards pinned to the corners, the scene owns the middle. */
+:root{
+  color-scheme:dark;
+  --bg:#04060b;
+  --ink:#eef1f4;
+  --mute:#9aa2ac;
+  --dim:#646c76;
+  --glass:rgba(20,23,29,.72);
+  --glass-strong:rgba(26,29,36,.9);
+  --line:rgba(255,255,255,.08);
+  --hover:rgba(255,255,255,.07);
+  --on:rgba(255,255,255,.12);
+  --teal:#3ad6b5;
+  --ui:"Figtree",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:13px/1.35 var(--ui);-webkit-font-smoothing:antialiased}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.hud{position:fixed;z-index:2;pointer-events:none}
+.tl{top:calc(14px + env(safe-area-inset-top,0px));left:calc(16px + env(safe-area-inset-left,0px));
+  display:grid;gap:9px;justify-items:start}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;letter-spacing:.01em;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.brand svg{width:14px;height:14px;color:var(--teal)}
+.stats{display:grid;grid-template-columns:repeat(4,106px);gap:6px}
+.stat{background:var(--glass);border:1px solid var(--line);border-radius:6px;padding:7px 10px 8px;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.stat .k{display:block;font-size:10px;color:var(--mute);letter-spacing:.01em}
+.stat .v{display:block;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap}
+.stat .v small{font-size:10px;font-weight:500;color:var(--mute);margin-left:3px}
+.pig{background:var(--glass);border:1px solid var(--line);border-radius:6px;padding:8px 10px;
+  display:grid;grid-template-columns:repeat(2,minmax(44px,auto));column-gap:16px;row-gap:3px;
+  font-size:10px;font-weight:600;font-variant-numeric:tabular-nums}
+.pig span{display:flex;align-items:center;gap:6px}
+.pig i,.rc i{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.bar{bottom:calc(14px + env(safe-area-inset-bottom,0px));left:calc(16px + env(safe-area-inset-left,0px));
+  pointer-events:auto;display:flex;align-items:center;gap:2px;background:var(--glass);
+  border:1px solid var(--line);border-radius:7px;padding:4px}
+.bar button{appearance:none;border:0;background:transparent;color:var(--mute);font:500 11px var(--ui);
+  height:26px;min-width:30px;padding:0 8px;border-radius:5px;cursor:pointer;display:grid;place-items:center}
+.bar button:hover{color:var(--ink);background:var(--hover)}
+.bar button[aria-pressed="true"]{color:var(--ink);background:var(--on)}
+.bar button:focus-visible,.panel button:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+.bar svg{width:13px;height:13px;display:block}
+.bar .sep{width:1px;height:16px;background:var(--line);margin:0 3px}
+.bar .status{color:var(--mute);font-size:11px;padding:0 8px 0 6px;white-space:nowrap;min-width:96px}
+.panel{right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));
+  width:228px;background:var(--glass-strong);border:1px solid var(--line);border-radius:8px;padding:12px;
+  pointer-events:auto}
+.panel h2{margin:0 0 5px;font-size:13px;font-weight:600}
+.panel .st{display:flex;gap:6px;align-items:center;color:var(--teal);font-size:11px;margin-bottom:12px}
+.panel .st svg{width:11px;height:11px;flex:none}
+.panel .row{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--mute);padding:2px 0;
+  font-variant-numeric:tabular-nums}
+.panel .row b{color:var(--ink);font-weight:500}
+.panel .sw{height:18px;border-radius:3px;margin:8px 0 6px}
+.panel .rc{display:flex;align-items:center;gap:6px;font-size:10.5px;padding:2px 0}
+.panel .rc b{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+.panel .prog{height:4px;background:var(--line);border-radius:2px;margin-top:7px;overflow:hidden}
+.panel .prog i{display:block;height:100%;background:var(--teal);border-radius:2px}
+.panel .again{margin-top:12px;width:100%;appearance:none;border:1px solid var(--line);background:var(--hover);
+  color:var(--ink);font:500 11px var(--ui);height:28px;border-radius:5px;cursor:pointer}
+.panel .again:hover{background:var(--on)}
+.ring{position:fixed;z-index:3;width:28px;height:28px;margin:-14px 0 0 -14px;border:2px solid var(--ink);
+  border-radius:50%;pointer-events:none;opacity:.8}
+.toast{bottom:calc(56px + env(safe-area-inset-bottom,0px));left:calc(16px + env(safe-area-inset-left,0px));
+  background:var(--glass-strong);border:1px solid var(--line);border-radius:6px;padding:7px 10px;
+  font-size:11px;color:var(--mute);max-width:min(340px,calc(100vw - 32px))}
+#boot{position:fixed;inset:0;display:grid;place-items:center;color:var(--mute);font-size:13px;z-index:5;
+  background:var(--bg);transition:opacity .7s;padding:0 24px;text-align:center}
+#boot.gone{opacity:0;pointer-events:none}
+@media (max-width:700px){
+  .tl{right:calc(16px + env(safe-area-inset-right,0px))}
+  .stats{grid-template-columns:repeat(4,minmax(0,1fr));width:100%}
+  .stat{padding:6px 7px}
+  .stat .v{font-size:14px}
+  .stat .k{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pig{display:none}
+  .panel{left:calc(16px + env(safe-area-inset-left,0px));width:auto;bottom:calc(58px + env(safe-area-inset-bottom,0px));padding:10px}
+  .panel .st{margin-bottom:6px}
+  .bar .status{min-width:0}
+  .toast{bottom:calc(220px + env(safe-area-inset-bottom,0px))}
+}
+@media (max-width:380px){.bar .status{display:none}}
+@media (prefers-reduced-motion:reduce){#boot{transition:none}}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="gl" tabindex="0" aria-label="3D studio: a robot arm mixes oil colours and paints a lighthouse in a storm"></canvas>
+<div id="boot" role="status">Setting up the studio…</div>
+
+<div class="hud tl">
+  <div class="brand"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M14.6 1.4c-2.7 1.3-6.3 5-7.8 7.4l1.3 1.3c2.4-1.5 6.1-5.1 7.4-7.8zM6 9.6c-1.4.1-2.4 1-2.7 2.3-.2.8-.7 1.5-1.9 2 2.6.7 5.2-.3 5.8-2.7z"/></svg>Gale Light Studio</div>
+  <div class="stats">
+    <div class="stat"><span class="k">Strokes laid</span><span class="v" id="vStrokes">0</span></div>
+    <div class="stat"><span class="k">Colours mixed</span><span class="v" id="vColours">0</span></div>
+    <div class="stat"><span class="k">Paint used</span><span class="v"><span id="vPaint">0.0</span><small>ml</small></span></div>
+    <div class="stat"><span class="k">Painting time</span><span class="v" id="vTime">00:00</span></div>
+  </div>
+  <div class="pig" id="pig" aria-label="Paint used per pigment, in millilitres"></div>
+</div>
+
+<div class="hud bar" role="toolbar" aria-label="Playback">
+  <button type="button" id="bFull" aria-label="Full screen" title="Full screen"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 5V1.5H5M9 1.5h3.5V5M12.5 9v3.5H9M5 12.5H1.5V9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button>
+  <button type="button" id="bPlay" aria-label="Pause" title="Pause (space)"><svg viewBox="0 0 14 14" aria-hidden="true"><path id="playIcon" d="M3.5 2h2.4v10H3.5zM8.1 2h2.4v10H8.1z" fill="currentColor"/></svg></button>
+  <span class="sep" aria-hidden="true"></span>
+  <button type="button" data-speed="1" aria-pressed="true" title="Real time (1)">1x</button>
+  <button type="button" data-speed="50" aria-pressed="false" title="50 times faster (2)">50x</button>
+  <button type="button" data-speed="150" aria-pressed="false" title="150 times faster (3)">150x</button>
+  <button type="button" data-speed="800" aria-pressed="false" title="800 times faster (4)">800x</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button type="button" id="bCam" aria-pressed="true" aria-label="Auto camera" title="Auto camera (C)"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 4h7.5v6.5H1.5zM9 6.2l3.5-2v6.1L9 8.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button>
+  <span class="status" id="vStatus" aria-live="polite">Changing tool</span>
+</div>
+
+<aside class="hud panel" id="panel"></aside>
+<div class="ring" id="ring" hidden></div>
+<div class="hud toast" id="toast" hidden>Free camera: drag to orbit, scroll to zoom. Double-click or press the camera button to hand control back.</div>
+
+<script>
+setTimeout(function(){
+  if(!window.__studioReady){
+    var b=document.getElementById('boot');
+    if(b) b.textContent='The 3D engine did not load. This page needs three.js from cdn.jsdelivr.net; check the connection and reload.';
+  }
+},15000);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ================================================================
+   Gale Light Studio
+   A mobile cobot mixes oil colours from twelve pigments and paints
+   "The Gale Light" in five passes, stroke by stroke.
+   ================================================================ */
+
+// ---------- numbers ----------
+const TAU = Math.PI * 2;
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = t => t * t * (3 - 2 * t);
+const smoother = t => t * t * t * (t * (t * 6 - 15) + 10);
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let rnd = mulberry32(20261103);
+const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * rnd()); };
+const pick = (arr, R = rnd) => arr[(R() * arr.length) | 0];
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const mkCanvas = (w, h, opts) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d', opts)]; };
+
+// ---------- colour ----------
+const s2l = c => (c /= 255) <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const l2s = c => { c = clamp(c, 0, 1); return 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055); };
+const labF = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+function lin2lab(r, g, b) {
+  const x = labF((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+  const y = labF(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const z = labF((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+const srgb2lab = (r, g, b) => lin2lab(s2l(r), s2l(g), s2l(b));
+const dE = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const hex2rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const rgbStr = (c, k = 1) => `rgb(${clamp(c[0] * k, 0, 255) | 0},${clamp(c[1] * k, 0, 255) | 0},${clamp(c[2] * k, 0, 255) | 0})`;
+const mixRGB = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+
+// ---------- pigments (row-wise in the HUD grid) ----------
+const PIG = [
+  ['Titanium White', '#f4f1ea'], ['Lemon Yellow', '#f3e03b'],
+  ['Cadmium Yellow Deep', '#f2a91d'], ['Cadmium Orange', '#ec6a1c'],
+  ['Cadmium Red', '#d3261f'], ['Quinacridone Magenta', '#c4246f'],
+  ['Dioxazine Violet', '#4b2475'], ['Ultramarine Blue', '#23339b'],
+  ['Cerulean Blue', '#2f86c6'], ['Phthalo Turquoise', '#14a397'],
+  ['Yellow Green', '#a9cf3c'], ['Ivory Black', '#1b1a1c'],
+].map(([name, hex]) => ({ name, hex, rgb: hex2rgb(hex) }));
+
+// Kubelka–Munk single-constant mixing, per linear channel.
+const ks = R => { R = Math.max(R, 0.002); return (1 - R) * (1 - R) / (2 * R); };
+const ksInv = K => 1 + K - Math.sqrt(K * K + 2 * K);
+const PIG_K = new Float64Array(36);
+PIG.forEach((p, i) => { for (let c = 0; c < 3; c++) PIG_K[i * 3 + c] = ks(s2l(p.rgb[c])); });
+
+function mixParts(parts) { // [{i,w}] -> sRGB
+  let tw = 0; for (const p of parts) tw += p.w;
+  const K = [0, 0, 0];
+  for (const p of parts) for (let c = 0; c < 3; c++) K[c] += (p.w / tw) * PIG_K[p.i * 3 + c];
+  return K.map(k => l2s(ksInv(k)));
+}
+
+// Best recipe of up to three pigments for a target Lab colour.
+function findRecipe(t) {
+  let bd = 1e9, best = null;
+  const K = PIG_K;
+  const test = (k0, k1, k2, pen) => {
+    const L = lin2lab(ksInv(k0), ksInv(k1), ksInv(k2));
+    return Math.sqrt((L[0] - t[0]) ** 2 + (L[1] - t[1]) ** 2 + (L[2] - t[2]) ** 2) + pen;
+  };
+  for (let i = 0; i < 12; i++) {
+    const d = test(K[i * 3], K[i * 3 + 1], K[i * 3 + 2], 0);
+    if (d < bd) { bd = d; best = [[i, 1]]; }
+  }
+  for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) for (let s = 1; s < 20; s++) {
+    const a = s / 20, b = 1 - a;
+    const d = test(a * K[i * 3] + b * K[j * 3], a * K[i * 3 + 1] + b * K[j * 3 + 1], a * K[i * 3 + 2] + b * K[j * 3 + 2], 0.8);
+    if (d < bd) { bd = d; best = [[i, a], [j, b]]; }
+  }
+  for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) for (let k = j + 1; k < 12; k++)
+    for (let a = 1; a <= 10; a++) for (let b = 1; a + b <= 11; b++) {
+      const wa = a / 12, wb = b / 12, wc = (12 - a - b) / 12;
+      const d = test(wa * K[i * 3] + wb * K[j * 3] + wc * K[k * 3],
+        wa * K[i * 3 + 1] + wb * K[j * 3 + 1] + wc * K[k * 3 + 1],
+        wa * K[i * 3 + 2] + wb * K[j * 3 + 2] + wc * K[k * 3 + 2], 2.2);
+      if (d < bd) { bd = d; best = [[i, wa], [j, wb], [k, wc]]; }
+    }
+  const parts = best.map(([i, w]) => ({ i, w })).sort((x, y) => y.w - x.w);
+  const pct = parts.map(p => Math.round(p.w * 100));
+  pct[0] += 100 - pct.reduce((s, v) => s + v, 0);
+  parts.forEach((p, n) => p.pct = pct[n]);
+  return { parts, rgb: mixParts(parts), err: bd };
+}
+
+// ---------- the reference painting (procedural) ----------
+const PW = 1600, PH = 1200;           // paint texture
+const CW = 1.2, CH = 0.9;             // canvas size in metres
+const PXM = PW / CW;                  // px per metre
+const RW = 640, RH = 480;             // reference
+const LW = 160, LH = 120;             // analysis grid
+const R_SKY = 0, R_SEA = 1, R_WAVE = 2, R_FOAM = 3, R_ROCK = 4, R_TOWER = 5;
+
+function buildReference() {
+  const R = mulberry32(4242);
+  const W = RW, H = RH, HZ = 0.605 * H;
+  const [rc, c] = mkCanvas(W, H, { willReadFrequently: true });
+  const [gc, g] = mkCanvas(W, H, { willReadFrequently: true });
+  g.imageSmoothingEnabled = false;
+  const reg = id => `rgb(${id * 40},0,0)`;
+  const ell = (ctx, x, y, rx, ry, a, col, al) => { ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(x, y, Math.max(rx, .5), Math.max(ry, .5), a, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; };
+  const glow = (x, y, r, col) => { const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gr; c.fillRect(x - r, y - r, r * 2, r * 2); };
+
+  // sky
+  let gr = c.createLinearGradient(0, 0, 0, HZ);
+  [[0, '#1d1527'], [.18, '#2e1f40'], [.36, '#4a2a55'], [.52, '#7a2b4e'], [.63, '#b8392c'], [.74, '#e2621c'], [.86, '#f2a52a'], [.95, '#f5d24a'], [1, '#f3e58a']]
+    .forEach(([o, col]) => gr.addColorStop(o, col));
+  c.fillStyle = gr; c.fillRect(0, 0, W, HZ + 2);
+  g.fillStyle = reg(R_SKY); g.fillRect(0, 0, W, H);
+  glow(.08 * W, .58 * H, .42 * W, 'rgba(255,128,24,.55)');
+  glow(.86 * W, .56 * H, .27 * W, 'rgba(240,232,92,.7)');
+  glow(.84 * W, .43 * H, .22 * W, 'rgba(236,84,24,.5)');
+  glow(.28 * W, .08 * H, .42 * W, 'rgba(18,10,28,.55)');
+  for (let i = 0; i < 180; i++) {
+    const v = Math.pow(R(), 1.15) * .43, y = v * H, x = R() * W * 1.1 - .05 * W;
+    const len = W * (.04 + R() * .17), th = H * (.006 + R() * .02);
+    const a = -.08 + .18 * Math.sin(x / W * 7 + v * 9) + (R() - .5) * .12;
+    const col = v < .22 ? pick(['#6d4f86', '#8a6aa2', '#b391bb', '#55396e', '#2a1c38', '#9d7cb0'], R)
+      : v < .34 ? pick(['#9a3e66', '#b8577a', '#7c3058', '#c86a8a', '#4f2a4d'], R)
+        : pick(['#e0582a', '#c8402c', '#f08a3a', '#a83236'], R);
+    ell(c, x, y, len / 2, th / 2, a, col, .35 + R() * .45);
+  }
+  // sea
+  gr = c.createLinearGradient(0, HZ, 0, H);
+  [[0, '#2a5a66'], [.08, '#1c3b4c'], [.35, '#122638'], [1, '#070d16']].forEach(([o, col]) => gr.addColorStop(o, col));
+  c.fillStyle = gr; c.fillRect(0, HZ, W, H - HZ);
+  g.fillStyle = reg(R_SEA); g.fillRect(0, HZ, W, H - HZ);
+  for (let i = 0; i < 280; i++) {
+    const t = Math.pow(R(), 1.6), y = HZ + 6 + t * (H - HZ - 10), x = R() * W, sc = 1 + t * 3;
+    const warm = x < .5 * W && t < .45 && R() < .7;
+    ell(c, x, y, W * (.004 + R() * .016) * sc, (.6 + R() * .8) * sc, (R() - .5) * .05,
+      warm ? pick(['#e8a640', '#f2c25e', '#d07a30'], R) : pick(['#7fa3b4', '#a9c2cc', '#3f7884', '#d6dde0', '#5b8fa0'], R), .35 + R() * .5);
+  }
+  // wave body
+  const wave = ctx => {
+    ctx.beginPath(); ctx.moveTo(0, .625 * H);
+    ctx.bezierCurveTo(.14 * W, .60 * H, .26 * W, .54 * H, .36 * W, .45 * H);
+    ctx.bezierCurveTo(.42 * W, .39 * H, .50 * W, .36 * H, .57 * W, .40 * H);
+    ctx.bezierCurveTo(.61 * W, .43 * H, .63 * W, .52 * H, .62 * W, .64 * H);
+    ctx.lineTo(0, .70 * H); ctx.closePath();
+  };
+  gr = c.createLinearGradient(.25 * W, .66 * H, .45 * W, .40 * H);
+  [[0, '#0b3d47'], [.4, '#137a78'], [.75, '#2fb3a2'], [1, '#8fe0c6']].forEach(([o, col]) => gr.addColorStop(o, col));
+  wave(c); c.fillStyle = gr; c.fill();
+  wave(g); g.fillStyle = reg(R_WAVE); g.fill();
+  for (let i = 0; i < 70; i++) { // light streaks along the swell
+    const u = R() * .55, v = .64 - u * .35 + (R() - .5) * .08;
+    ell(c, u * W, v * H, W * (.02 + R() * .04), 1.5 + R() * 2, -.35 - u * .5, pick(['#46c7b4', '#1c8c86', '#7fd9c4', '#0f5a5e'], R), .5);
+  }
+  // rocks
+  const rock = ctx => {
+    ctx.beginPath(); ctx.moveTo(.47 * W, .70 * H);
+    ctx.bezierCurveTo(.53 * W, .60 * H, .58 * W, .585 * H, .63 * W, .585 * H);
+    ctx.lineTo(.70 * W, .575 * H);
+    ctx.bezierCurveTo(.82 * W, .585 * H, .92 * W, .595 * H, W, .61 * H);
+    ctx.lineTo(W, .74 * H);
+    ctx.bezierCurveTo(.8 * W, .75 * H, .6 * W, .73 * H, .47 * W, .70 * H); ctx.closePath();
+  };
+  rock(c); c.fillStyle = '#110d10'; c.fill();
+  rock(g); g.fillStyle = reg(R_ROCK); g.fill();
+  for (let i = 0; i < 90; i++) {
+    const u = .5 + R() * .5, v = .6 + R() * .12;
+    ell(c, u * W, v * H, 4 + R() * 12, 1 + R() * 2.5, -.2 + R() * .4, pick(['#251b20', '#1a1418', '#3a2a2c', '#4a3438'], R), .7);
+  }
+  for (let i = 0; i < 26; i++) {
+    const u = .55 + R() * .44;
+    ell(c, u * W, (.585 + (u - .7) * .03 + R() * .01) * H, 5 + R() * 9, 1, 0, pick(['#8a5a3a', '#5a3a34', '#b0703a'], R), .55);
+  }
+  // foam & spray
+  const foam = [];
+  const crest = t => { // along the crest bezier, t 0..1
+    const p0 = [.36, .45], p1 = [.42, .39], p2 = [.50, .36], p3 = [.57, .40], m = 1 - t;
+    return [m * m * m * p0[0] + 3 * m * m * t * p1[0] + 3 * m * t * t * p2[0] + t * t * t * p3[0],
+    m * m * m * p0[1] + 3 * m * m * t * p1[1] + 3 * m * t * t * p2[1] + t * t * t * p3[1]];
+  };
+  for (let i = 0; i < 140; i++) {
+    const [u, v] = crest(R()); foam.push([u + (R() - .5) * .05, v - R() * .05, .008 + R() * .02]);
+  }
+  for (let i = 0; i < 230; i++) {
+    const u = .52 + gauss() * .075 + .02, v = .37 + gauss() * .065 - Math.abs(gauss()) * .03;
+    foam.push([u, v, .006 + R() * .022]);
+  }
+  for (let i = 0; i < 60; i++) foam.push([.55 + R() * .1, .5 + R() * .1, .008 + R() * .02]);
+  for (const [u, v, r] of foam) {
+    const shade = v > .44 || u < .45 ? pick(['#d9c3b6', '#c9a9a8', '#b7a2bd', '#e6d8c6', '#9fc9c0'], R) : pick(['#f6f1e6', '#ece2d2', '#fffaf0', '#efdfcc', '#e8cfc6'], R);
+    const a = .5 + R() * .45;
+    ell(c, u * W, v * H, r * W, r * W * (.7 + R() * .5), R() * TAU, shade, a);
+    if (a > .62) ell(g, u * W, v * H, r * W * .8, r * W * .6, 0, reg(R_FOAM), 1);
+  }
+  // lighthouse
+  const tx = .665 * W, tower = (y0, y1) => {
+    const hw = v => lerp(.028, .018, (.595 - v) / .36) * W;
+    return [[tx - hw(y1), y1 * H], [tx + hw(y1), y1 * H], [tx + hw(y0), y0 * H], [tx - hw(y0), y0 * H]];
+  };
+  const poly = (ctx, pts, col) => { ctx.fillStyle = col; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); };
+  [[.235, .275, '#c42a2c'], [.275, .335, '#f0e8df'], [.335, .385, '#c42a2c'], [.385, .45, '#efe6dc'], [.45, .5, '#b8262a'], [.5, .595, '#e9e0d6']]
+    .forEach(([a, b, col]) => poly(c, tower(b + .002, a), col));
+  poly(g, tower(.6, .15), reg(R_TOWER));
+  gr = c.createLinearGradient(tx - .03 * W, 0, tx + .03 * W, 0);
+  gr.addColorStop(0, 'rgba(255,240,220,.18)'); gr.addColorStop(.45, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(14,6,20,.5)');
+  poly(c, tower(.595, .235), gr);
+  c.fillStyle = '#2a1416'; c.fillRect(tx - .026 * W, .228 * H, .052 * W, .01 * H);
+  c.fillStyle = '#fff0b0'; c.fillRect(tx - .014 * W, .19 * H, .028 * W, .04 * H);
+  c.fillStyle = '#3a2224'; c.fillRect(tx - .002 * W, .19 * H, .004 * W, .04 * H);
+  poly(c, [[tx - .021 * W, .192 * H], [tx + .021 * W, .192 * H], [tx, .155 * H]], '#6a1a1c');
+  glow(tx, .21 * H, .085 * W, 'rgba(255,236,170,.4)');
+  for (let i = 0; i < 18; i++) ell(c, (.62 + R() * .06) * W, (.56 + R() * .05) * H, 3 + R() * 8, 2 + R() * 5, R(), pick(['#f6f1e6', '#e2cfc0'], R), .7);
+
+  return { rc, gc, c, g };
+}
+
+// separable box blur (3 passes ≈ gaussian) on interleaved RGB floats
+function boxBlur(src, w, h, r) {
+  r = Math.round(r);
+  let a = Float32Array.from(src);
+  if (r < 1) return a;
+  const b = new Float32Array(src.length), inv = 1 / (2 * r + 1);
+  for (let it = 0; it < 3; it++) {
+    for (let y = 0; y < h; y++) for (let ch = 0; ch < 3; ch++) {
+      let acc = 0; const row = y * w;
+      for (let k = -r; k <= r; k++) acc += a[(row + clamp(k, 0, w - 1)) * 3 + ch];
+      for (let x = 0; x < w; x++) {
+        b[(row + x) * 3 + ch] = acc * inv;
+        acc += a[(row + Math.min(w - 1, x + r + 1)) * 3 + ch] - a[(row + Math.max(0, x - r)) * 3 + ch];
+      }
+    }
+    for (let x = 0; x < w; x++) for (let ch = 0; ch < 3; ch++) {
+      let acc = 0;
+      for (let k = -r; k <= r; k++) acc += b[(clamp(k, 0, h - 1) * w + x) * 3 + ch];
+      for (let y = 0; y < h; y++) {
+        a[(y * w + x) * 3 + ch] = acc * inv;
+        acc += b[(Math.min(h - 1, y + r + 1) * w + x) * 3 + ch] - b[(Math.max(0, y - r) * w + x) * 3 + ch];
+      }
+    }
+  }
+  return a;
+}
+
+const REF = (() => {
+  const { c, g, rc, gc } = buildReference();
+  const d = c.getImageData(0, 0, RW, RH).data, rd = g.getImageData(0, 0, RW, RH).data;
+  const base = new Float32Array(RW * RH * 3), region = new Uint8Array(RW * RH);
+  for (let i = 0; i < RW * RH; i++) {
+    base[i * 3] = d[i * 4]; base[i * 3 + 1] = d[i * 4 + 1]; base[i * 3 + 2] = d[i * 4 + 2];
+    region[i] = Math.min(5, Math.round(rd[i * 4] / 40));
+  }
+  const levels = [8, 5, 3, 1].map(r => boxBlur(base, RW, RH, r));
+  const lowLab = levels.map(lv => {
+    const out = new Float32Array(LW * LH * 3);
+    for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+      const rx = ((x + .5) * RW / LW) | 0, ry = ((y + .5) * RH / LH) | 0, k = (ry * RW + rx) * 3;
+      const L = srgb2lab(lv[k], lv[k + 1], lv[k + 2]); out.set(L, (y * LW + x) * 3);
+    }
+    return out;
+  });
+  const regionLow = new Uint8Array(LW * LH), edge = new Float32Array(LW * LH);
+  for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+    regionLow[y * LW + x] = region[(((y + .5) * RH / LH) | 0) * RW + (((x + .5) * RW / LW) | 0)];
+    const L = lowLab[3], at = (xx, yy) => L[(clamp(yy, 0, LH - 1) * LW + clamp(xx, 0, LW - 1)) * 3];
+    edge[y * LW + x] = clamp(Math.hypot(at(x + 1, y) - at(x - 1, y), at(x, y + 1) - at(x, y - 1)) / 30, 0, 2);
+  }
+  return { levels, lowLab, region, regionLow, edge, canvas: rc, regionCanvas: gc };
+})();
+
+function sampleRef(level, x, y) { // paint px -> sRGB
+  const rx = clamp((x * RW / PW) | 0, 0, RW - 1), ry = clamp((y * RH / PH) | 0, 0, RH - 1), k = (ry * RW + rx) * 3;
+  const lv = REF.levels[level];
+  return [lv[k], lv[k + 1], lv[k + 2]];
+}
+const regionAt = (x, y) => REF.region[clamp((y * RH / PH) | 0, 0, RH - 1) * RW + clamp((x * RW / PW) | 0, 0, RW - 1)];
+
+// Direction field: which way strokes run in each part of the picture.
+const wrapHalf = a => ((a + Math.PI / 2) % Math.PI + Math.PI) % Math.PI - Math.PI / 2;
+function fieldAngle(u, v, reg) {
+  switch (reg) {
+    case R_TOWER: return Math.PI / 2 + .05 * Math.sin(v * 40);
+    case R_SEA: return .03 * Math.sin(u * 17 + v * 31) + (v > .8 ? .04 * Math.sin(u * 9) : 0);
+    case R_ROCK: return -.12 + .35 * Math.sin(u * 21 + v * 13);
+    case R_WAVE: return Math.atan2((v - 1.05) * .75, u - .47) + Math.PI / 2;
+    case R_FOAM: return Math.atan2((v - .44) * .75, u - .5) + 1.25;
+    default: {
+      let a = .16 * Math.sin(u * 7.5 + v * 4) + .2 * Math.sin(u * 2.7 - v * 8 + 1.3) - .05;
+      const dx = u - .52, dy = (v - .36) * .75, d = Math.hypot(dx, dy);
+      if (d < .22) a += wrapHalf(Math.atan2(dy, dx) + 1.2 - a) * (1 - d / .22) * .6;
+      return a;
+    }
+  }
+}
+
+// ---------- tools & passes ----------
+const TOOLS = {
+  wide: { label: 'Wide flat', bristles: 34, speed: 700, thick: 40e-6, h0: 22, hv: 22, perLoad: 4 },
+  flat: { label: 'Flat No. 12', bristles: 24, speed: 620, thick: 55e-6, h0: 28, hv: 26, perLoad: 6 },
+  filbert: { label: 'Filbert No. 8', bristles: 18, speed: 560, thick: 60e-6, h0: 32, hv: 30, perLoad: 7 },
+  knife: { label: 'Palette knife', speed: 340, thick: 260e-6, h0: 112, hv: 30, perLoad: 4 },
+  round: { label: 'Round No. 4', bristles: 9, speed: 520, thick: 80e-6, h0: 40, hv: 35, perLoad: 12 },
+};
+const TOOL_ORDER = ['wide', 'flat', 'filbert', 'knife', 'round'];
+const PASSES = [
+  { name: 'Blocking in', tool: 'wide', quota: 493, over: 1.3, width: 88, len: [150, 320], level: 0, stop: 28, maxTurn: .05, jitter: .25 },
+  { name: 'Shaping', tool: 'flat', quota: 822, over: 1.7, width: 50, len: [90, 190], level: 1, stop: 20, maxTurn: .10, jitter: .2 },
+  { name: 'Refining', tool: 'filbert', quota: 960, over: 1.9, width: 30, len: [70, 160], level: 2, stop: 15, maxTurn: .16, jitter: .16 },
+  { name: 'Knife impasto', tool: 'knife', quota: 838, over: 1.9, width: 34, len: [60, 130], level: 2, stop: 18, maxTurn: .14, jitter: .3 },
+  { name: 'Final accents', tool: 'round', quota: 836, over: 2.2, width: 13, len: [22, 70], level: 3, stop: 11, maxTurn: .25, jitter: .12 },
+];
+const COLOURS_PER_PASS = 20;
+const PROF = {
+  wide: () => 1,
+  flat: t => .92 + .08 * Math.sin(Math.PI * t),
+  filbert: t => .55 + .45 * Math.sin(Math.PI * Math.min(1, t * 1.1)),
+  round: t => .3 + .7 * Math.sin(Math.PI * t),
+  knife: () => 1,
+};
+
+// ---------- paint surface ----------
+const [paintCv, pctx] = mkCanvas(PW, PH);
+const [heightCv, hctx] = mkCanvas(PW, PH);
+const [midCv, mctx] = mkCanvas(400, 300);
+const [lowCv, lctx] = mkCanvas(LW, LH, { willReadFrequently: true });
+const CANVAS_GROUND = [233, 225, 207];
+
+function primeCanvas() {
+  pctx.globalAlpha = 1; pctx.fillStyle = rgbStr(CANVAS_GROUND); pctx.fillRect(0, 0, PW, PH);
+  const R = mulberry32(77);
+  for (let i = 0; i < 2400; i++) { pctx.fillStyle = `rgba(${R() < .5 ? '255,255,250' : '120,110,90'},${.03 + R() * .04})`; pctx.fillRect(R() * PW, R() * PH, 1 + R() * 3, 1 + R() * 3); }
+  hctx.fillStyle = 'rgb(6,6,6)'; hctx.fillRect(0, 0, PW, PH);
+  hctx.fillStyle = 'rgb(13,13,13)';
+  for (let y = 0; y < PH; y += 4) hctx.fillRect(0, y, PW, 1.4);
+  for (let x = 0; x < PW; x += 4) hctx.fillRect(x, 0, 1.4, PH);
+  pctx.lineCap = hctx.lineCap = 'round'; pctx.lineJoin = hctx.lineJoin = 'round';
+}
+
+function readLow() { // current painting at analysis resolution
+  mctx.drawImage(paintCv, 0, 0, 400, 300);
+  lctx.drawImage(midCv, 0, 0, LW, LH);
+  const d = lctx.getImageData(0, 0, LW, LH).data;
+  const lab = new Float32Array(LW * LH * 3), rgb = new Uint8Array(LW * LH * 3);
+  for (let i = 0; i < LW * LH; i++) {
+    rgb[i * 3] = d[i * 4]; rgb[i * 3 + 1] = d[i * 4 + 1]; rgb[i * 3 + 2] = d[i * 4 + 2];
+    lab.set(srgb2lab(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]), i * 3);
+  }
+  return { lab, rgb };
+}
+
+// ---------- stroke geometry ----------
+function resample(raw, ds) {
+  const n = raw.length / 2, cum = [0];
+  for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(raw[i * 2] - raw[i * 2 - 2], raw[i * 2 + 1] - raw[i * 2 - 1]));
+  const L = cum[n - 1], m = Math.max(2, Math.ceil(L / ds) + 1);
+  const p = new Float32Array(m * 2), t = new Float32Array(m * 2), s = new Float32Array(m);
+  let j = 0;
+  for (let k = 0; k < m; k++) {
+    const sk = L * k / (m - 1); s[k] = sk;
+    while (j < n - 2 && cum[j + 1] < sk) j++;
+    const f = (sk - cum[j]) / ((cum[j + 1] - cum[j]) || 1);
+    p[k * 2] = lerp(raw[j * 2], raw[j * 2 + 2], f); p[k * 2 + 1] = lerp(raw[j * 2 + 1], raw[j * 2 + 3], f);
+  }
+  for (let k = 0; k < m; k++) {
+    const a = Math.max(0, k - 1), b = Math.min(m - 1, k + 1);
+    let dx = p[b * 2] - p[a * 2], dy = p[b * 2 + 1] - p[a * 2 + 1]; const l = Math.hypot(dx, dy) || 1;
+    t[k * 2] = dx / l; t[k * 2 + 1] = dy / l;
+  }
+  return { p, t, s, S: L };
+}
+
+function buildStroke(x, y, P, R) {
+  const lab0 = srgb2lab(...sampleRef(P.level, x, y)), inTower = regionAt(x, y) === R_TOWER, fence = P !== PASSES[0];
+  const len = lerp(P.len[0], P.len[1], R()), jit = gauss() * P.jitter;
+  const step = Math.max(3, P.width * .16);
+  const march = sign => {
+    const pts = []; let px = x, py = y, L = 0;
+    let a = fieldAngle(x / PW, y / PH, regionAt(x, y)) + jit, vx = Math.cos(a) * sign, vy = Math.sin(a) * sign;
+    while (L < len / 2) {
+      a = fieldAngle(px / PW, py / PH, regionAt(px, py)) + jit;
+      let nx = Math.cos(a), ny = Math.sin(a); if (nx * vx + ny * vy < 0) { nx = -nx; ny = -ny; }
+      const turn = clamp(Math.atan2(vx * ny - vy * nx, vx * nx + vy * ny), -P.maxTurn, P.maxTurn);
+      const ca = Math.cos(turn), sa = Math.sin(turn); [vx, vy] = [vx * ca - vy * sa, vx * sa + vy * ca];
+      const qx = px + vx * step, qy = py + vy * step;
+      if (qx < -12 || qx > PW + 12 || qy < -12 || qy > PH + 12) break;
+      if (fence && (regionAt(qx, qy) === R_TOWER) !== inTower) break;
+      if (L > len * .18 && dE(lab0, srgb2lab(...sampleRef(P.level, qx, qy))) > P.stop) break;
+      px = qx; py = qy; L += step; pts.push(px, py);
+    }
+    return pts;
+  };
+  const f = march(1), b = march(-1), raw = [];
+  for (let i = b.length - 2; i >= 0; i -= 2) raw.push(b[i], b[i + 1]);
+  raw.push(x, y, ...f);
+  if (raw.length < 4) { const a = fieldAngle(x / PW, y / PH, regionAt(x, y)); raw.push(x + Math.cos(a) * step * 2, y + Math.sin(a) * step * 2); }
+  const st = resample(raw, clamp(P.width * .2, 3, 10));
+  st.width = P.width * (.85 + R() * .3);
+  st.tool = P.tool; st.tower = inTower;
+  const acc = [0, 0, 0]; let n = 0;
+  for (let k = 0; k < st.s.length; k += 3) { const c = sampleRef(P.level, st.p[k * 2], st.p[k * 2 + 1]); acc[0] += c[0]; acc[1] += c[1]; acc[2] += c[2]; n++; }
+  st.target = acc.map(v => v / n);
+  st.ml = (st.width / PXM) * (st.S / PXM) * TOOLS[P.tool].thick * 1e6;
+  return st;
+}
+
+function kmeans(pts, K, R) {
+  const n = pts.length; K = Math.min(K, n);
+  const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+  const cent = [pts[(R() * n) | 0].slice()], best = new Float64Array(n).fill(Infinity);
+  while (cent.length < K) {
+    const c = cent[cent.length - 1]; let sum = 0;
+    for (let i = 0; i < n; i++) { best[i] = Math.min(best[i], d2(pts[i], c)); sum += best[i]; }
+    let r = R() * sum, i = 0; for (; i < n - 1; i++) { r -= best[i]; if (r <= 0) break; }
+    cent.push(pts[i].slice());
+  }
+  const asg = new Int32Array(n);
+  for (let it = 0; it < 12; it++) {
+    for (let i = 0; i < n; i++) { let bi = 0, bd = Infinity; for (let k = 0; k < K; k++) { const d = d2(pts[i], cent[k]); if (d < bd) { bd = d; bi = k; } } asg[i] = bi; }
+    const sum = cent.map(() => [0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) { const s = sum[asg[i]]; s[0] += pts[i][0]; s[1] += pts[i][1]; s[2] += pts[i][2]; s[3]++; }
+    sum.forEach((s, k) => { if (s[3]) cent[k] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]]; });
+  }
+  return { cent, asg };
+}
+
+function passWeight(pi, reg, L, edge) {
+  switch (pi) {
+    case 0: return 1;
+    case 1: return (1 + edge * .5) * (reg === R_TOWER ? 3 : 1);
+    case 2: return (1 + edge) * (reg === R_TOWER ? 3 : 1);
+    case 3: return ({ [R_FOAM]: 1.7, [R_SKY]: 1.3, [R_WAVE]: 1.4, [R_ROCK]: .5, [R_TOWER]: .25 }[reg] ?? .5) * (.6 + L / 100);
+    default: return (1 + edge * 2.5) * ({ [R_TOWER]: 3.5, [R_SEA]: 1.4, [R_FOAM]: 1.2 }[reg] ?? 1);
+  }
+}
+
+// Plan one pass: find where the painting is still wrong, lay strokes there,
+// group them into colours the robot can mix, darks first.
+function planPass(pi) {
+  const P = PASSES[pi], R = rnd, cur = readLow(), refL = REF.lowLab[Math.min(P.level, 3)];
+  const err = new Float32Array(LW * LH);
+  for (let i = 0; i < LW * LH; i++) err[i] = Math.hypot(cur.lab[i * 3] - refL[i * 3], cur.lab[i * 3 + 1] - refL[i * 3 + 1], cur.lab[i * 3 + 2] - refL[i * 3 + 2]);
+  const want = Math.round(P.quota * P.over), s = Math.sqrt(PW * PH / want);
+  const nx = Math.ceil(PW / s), ny = Math.ceil(PH / s), cells = [];
+  for (let gy = 0; gy < ny; gy++) for (let gx = 0; gx < nx; gx++) {
+    const x = clamp((gx + .5 + (R() - .5) * .9) * s, 2, PW - 2), y = clamp((gy + .5 + (R() - .5) * .9) * s, 2, PH - 2);
+    const lx = (x / PW * LW) | 0, ly = (y / PH * LH) | 0;
+    let e = 0, c = 0;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const xx = lx + ox, yy = ly + oy; if (xx < 0 || yy < 0 || xx >= LW || yy >= LH) continue; e += err[yy * LW + xx]; c++;
+    }
+    const li = ly * LW + lx;
+    cells.push({ x, y, li, score: (e / c) * passWeight(pi, REF.regionLow[li], refL[li * 3], REF.edge[li]) * (.8 + .4 * R()) });
+  }
+  cells.sort((a, b) => b.score - a.score);
+  while (cells.length < P.quota) { const c = cells[(R() * cells.length) | 0]; cells.push({ ...c, x: clamp(c.x + gauss() * 20, 2, PW - 2) }); }
+  const strokes = cells.slice(0, P.quota).map(c => {
+    const st = buildStroke(c.x, c.y, P, R);
+    st.under = [cur.rgb[c.li * 3], cur.rgb[c.li * 3 + 1], cur.rgb[c.li * 3 + 2]];
+    return st;
+  });
+  const group = (list, K) => {
+    if (!list.length) return [];
+    const { cent, asg } = kmeans(list.map(st => srgb2lab(...st.target)), K, R);
+    const cls = cent.map(lab => ({ lab, recipe: findRecipe(lab), strokes: [], ml: 0 }));
+    list.forEach((st, i) => { const cl = cls[asg[i]]; cl.strokes.push(st); cl.ml += st.ml; });
+    return cls.filter(c => c.strokes.length).sort((a, b) => a.lab[0] - b.lab[0]);
+  };
+  const towerSt = pi ? strokes.filter(st => st.tower) : [], rest = pi ? strokes.filter(st => !st.tower) : strokes;
+  const kT = towerSt.length ? Math.min(3, towerSt.length) : 0;
+  const used = [...group(rest, COLOURS_PER_PASS - kT), ...group(towerSt, kT)];
+  for (const cl of used) {
+    cl.rgb = cl.recipe.rgb;
+    const left = cl.strokes.slice(), out = [];
+    let cx = 0, cy = 0;
+    while (left.length) {
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < left.length; i++) { const d = (left[i].p[0] - cx) ** 2 + (left[i].p[1] - cy) ** 2; if (d < bd) { bd = d; bi = i; } }
+      const st = left.splice(bi, 1)[0]; out.push(st);
+      cx = st.p[st.p.length - 2]; cy = st.p[st.p.length - 1];
+    }
+    cl.strokes = out;
+  }
+  return { clusters: used, total: strokes.length };
+}
+
+// ---------- laying paint ----------
+function strokeAt(st, s) {
+  const S = st.s, n = S.length; s = clamp(s, 0, st.S);
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= s) lo = m; else hi = m; }
+  const f = (s - S[lo]) / ((S[hi] - S[lo]) || 1);
+  return { x: lerp(st.p[lo * 2], st.p[hi * 2], f), y: lerp(st.p[lo * 2 + 1], st.p[hi * 2 + 1], f), tx: lerp(st.t[lo * 2], st.t[hi * 2], f), ty: lerp(st.t[lo * 2 + 1], st.t[hi * 2 + 1], f) };
+}
+
+function tracePath(ctx, st, a, e, off, prof) {
+  const S = st.s, p = st.p, t = st.t, n = S.length, inv = 1 / (st.S || 1);
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] <= a) lo = m; else hi = m; }
+  ctx.beginPath();
+  const put = (k, f, s, first) => {
+    const k2 = Math.min(k + 1, n - 1);
+    const x = p[k * 2] + (p[k2 * 2] - p[k * 2]) * f, y = p[k * 2 + 1] + (p[k2 * 2 + 1] - p[k * 2 + 1]) * f;
+    const tx = t[k * 2] + (t[k2 * 2] - t[k * 2]) * f, ty = t[k * 2 + 1] + (t[k2 * 2 + 1] - t[k * 2 + 1]) * f;
+    const o = off * prof(s * inv), X = x - ty * o, Y = y + tx * o;
+    first ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y);
+  };
+  put(lo, (a - S[lo]) / ((S[lo + 1] - S[lo]) || 1), a, true);
+  let k = lo + 1; while (k < n && S[k] < e) { put(k, 0, S[k], false); k++; }
+  const j = Math.min(k - 1, n - 2); put(j, (e - S[j]) / ((S[j + 1] - S[j]) || 1), e, false);
+}
+
+function prepareStroke(st, cl, load, prevRGB) {
+  const T = TOOLS[st.tool], base = mixRGB(cl.rgb, st.target, .35), under = st.under || base, R = rnd;
+  if (st.tool === 'knife') {
+    const h = T.h0 + R() * T.hv | 0, col = mixRGB(base, under, .08);
+    st.k = { col: rgbStr(col), light: rgbStr(col, 1.09), dark: rgbStr(col, .9), edge: rgbStr(col, 1.14),
+      h: `rgb(${h},${h},${h})`, hr: `rgb(${h + 38},${h + 38},${h + 38})`, hv: `rgb(${h - 22},${h - 22},${h - 22})`, he: `rgb(${Math.min(255, h + 85)},${Math.min(255, h + 85)},${Math.min(255, h + 85)})` };
+    return;
+  }
+  const nb = T.bristles, w = st.width, dry = 1 - load;
+  st.b = [];
+  for (let i = 0; i < nb; i++) {
+    let col = base.map(v => v * (1 + gauss() * .05));
+    if (R() < .25) col = mixRGB(col, under, .2 + R() * .3);
+    if (prevRGB && R() < .06) col = mixRGB(col, prevRGB, .35);
+    if (R() < .05) col = mixRGB(col, [255, 250, 240], .15);
+    const h = clamp(T.h0 + R() * T.hv + (1 - dry) * 10, 0, 255) | 0;
+    st.b.push({ off: ((i + .5) / nb - .5) * w + (R() - .5) * w / nb, w: w / nb * (1.3 + R() * 1.1),
+      s0: R() < .15 ? R() * .12 : 0, e1: 1 - R() * (.06 + dry * .45), col: rgbStr(col), h: `rgb(${h},${h},${h})` });
+  }
+}
+
+function drawStroke(st, a, e) {
+  if (e <= a) return;
+  if (st.tool === 'knife') return drawKnife(st, a, e);
+  const prof = PROF[st.tool], S = st.S;
+  for (const b of st.b) {
+    const s0 = Math.max(a, b.s0 * S), s1 = Math.min(e, b.e1 * S);
+    if (s1 <= s0) continue;
+    tracePath(pctx, st, s0, s1, b.off, prof); pctx.strokeStyle = b.col; pctx.lineWidth = b.w; pctx.stroke();
+    tracePath(hctx, st, s0, s1, b.off, prof); hctx.strokeStyle = b.h; hctx.lineWidth = b.w * .72; hctx.stroke();
+  }
+}
+
+function drawKnife(st, a, e) {
+  const K = st.k, one = PROF.knife, w = st.width;
+  tracePath(pctx, st, a, e, 0, one); pctx.lineWidth = w * .92; pctx.strokeStyle = K.col; pctx.stroke();
+  tracePath(hctx, st, a, e, 0, one); hctx.lineWidth = w * .92; hctx.strokeStyle = K.h; hctx.stroke();
+  const pitch = 3.2;
+  for (let r = Math.ceil(a / pitch) * pitch; r < e; r += pitch) {
+    const q = strokeAt(st, r), k = Math.round(r / pitch), half = w * .44 * (.85 + .15 * Math.sin(k * .7));
+    const nx = -q.ty, ny = q.tx;
+    pctx.beginPath(); pctx.moveTo(q.x - nx * half, q.y - ny * half); pctx.lineTo(q.x + nx * half, q.y + ny * half);
+    pctx.strokeStyle = k % 2 ? K.light : K.dark; pctx.lineWidth = 1.4; pctx.stroke();
+    hctx.beginPath(); hctx.moveTo(q.x - nx * half, q.y - ny * half); hctx.lineTo(q.x + nx * half, q.y + ny * half);
+    hctx.strokeStyle = k % 2 ? K.hr : K.hv; hctx.lineWidth = 1.6; hctx.stroke();
+  }
+  for (const side of [-1, 1]) {
+    tracePath(hctx, st, a, e, side * w * .47, one); hctx.lineWidth = 2.6; hctx.strokeStyle = K.he; hctx.stroke();
+    tracePath(pctx, st, a, e, side * w * .47, one); pctx.lineWidth = 1.4; pctx.strokeStyle = K.edge; pctx.stroke();
+  }
+}
+
+// ---------- renderer & scene ----------
+const glCanvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04060b);
+scene.fog = new THREE.Fog(0x04060b, 8, 16);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture;
+scene.environmentIntensity = .16;
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, .03, 40);
+const ANISO = renderer.capabilities.getMaxAnisotropy();
+
+const std = (color, roughness = .5, metalness = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+const M = {
+  white: std(0xe8e8e4, .36), grey: std(0xb4b8bd, .45), dark: std(0x24262b, .5), black: std(0x0d0e10, .32),
+  steel: std(0xa9afb6, .28, .9), metal: std(0x5d6168, .45, .5), blue: std(0x1d4a9e, .42), binBlue: std(0x2557b8, .5),
+  easel: std(0x3a2116, .62), orange: std(0xe8901c, .5), led: new THREE.MeshBasicMaterial({ color: 0x4f8bff }),
+  canvasSide: std(0xe7e0d0, .85), kraft: std(0xa8743f, .8), paper: std(0xf2f0ea, .8),
+};
+function mesh(geo, mat, parent, x = 0, y = 0, z = 0, cast = true, recv = true) {
+  const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = cast; m.receiveShadow = recv;
+  if (parent) parent.add(m); return m;
+}
+const box = (w, h, d, mat, parent, x, y, z, c, r) => mesh(new THREE.BoxGeometry(w, h, d), mat, parent, x, y, z, c, r);
+const cyl = (rt, rb, h, mat, parent, x, y, z, seg = 28) => mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat, parent, x, y, z);
+function beam(a, b, w, d, mat, parent) {
+  const dir = b.clone().sub(a), len = dir.length();
+  const m = mesh(new THREE.BoxGeometry(w, len, d), mat, parent);
+  m.position.copy(a).addScaledVector(dir, .5);
+  m.quaternion.setFromUnitVectors(V(0, 1, 0), dir.normalize());
+  return m;
+}
+function canvasTex(cv, repeat, srgb = true) {
+  const t = new THREE.CanvasTexture(cv);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = ANISO;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  return t;
+}
+
+// ---------- procedural surfaces ----------
+function brickTextures() {
+  const [c, x] = mkCanvas(1024, 1024), [b, y] = mkCanvas(1024, 1024), R = mulberry32(7);
+  x.fillStyle = '#05070d'; x.fillRect(0, 0, 1024, 1024); y.fillStyle = '#1a1a1a'; y.fillRect(0, 0, 1024, 1024);
+  const rows = 22, bh = 1024 / rows, bw = 128, m = 5;
+  for (let row = 0; row < rows; row++) {
+    const off = (row % 2) * bw / 2;
+    for (let col = -1; col <= 8; col++) {
+      const X = col * bw + off, Y = row * bh, l = 9 + R() * 9;
+      x.fillStyle = `hsl(${218 + R() * 14} ${26 + R() * 16}% ${l}%)`; x.fillRect(X + m / 2, Y + m / 2, bw - m, bh - m);
+      const v = 170 + R() * 50 | 0; y.fillStyle = `rgb(${v},${v},${v})`; y.fillRect(X + m / 2, Y + m / 2, bw - m, bh - m);
+      for (let k = 0; k < 40; k++) {
+        const sx = X + R() * bw, sy = Y + R() * bh, s = 1 + R() * 3;
+        x.fillStyle = `rgba(${R() < .5 ? '255,255,255' : '0,0,0'},${R() * .06})`; x.fillRect(sx, sy, s, s);
+        const q = v - 40 + R() * 60 | 0; y.fillStyle = `rgb(${q},${q},${q})`; y.fillRect(sx, sy, s, s);
+      }
+    }
+  }
+  return [c, b];
+}
+function plankTexture() {
+  const [c, x] = mkCanvas(1024, 1024), R = mulberry32(11);
+  for (let i = 0; i < 8; i++) {
+    const X = i * 128;
+    x.fillStyle = `hsl(${22 + R() * 8} ${30 + R() * 10}% ${8 + R() * 5}%)`; x.fillRect(X, 0, 128, 1024);
+    for (let k = 0; k < 60; k++) { x.strokeStyle = `rgba(${R() < .5 ? '255,210,170' : '0,0,0'},${.04 + R() * .05})`; x.lineWidth = .6 + R() * 1.4; x.beginPath(); const gx = X + R() * 128; x.moveTo(gx, 0); x.bezierCurveTo(gx + (R() - .5) * 20, 340, gx + (R() - .5) * 20, 680, gx, 1024); x.stroke(); }
+    x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(X, 0, 2, 1024); x.fillRect(X, (R() * 1024) | 0, 128, 2);
+  }
+  return c;
+}
+function benchTopTexture() {
+  const [c, x] = mkCanvas(1024, 256), R = mulberry32(13);
+  for (let y = 0; y < 256; y += 16) {
+    x.fillStyle = `hsl(${27 + R() * 8} ${42 + R() * 12}% ${40 + R() * 14}%)`; x.fillRect(0, y, 1024, 16);
+    for (let k = 0; k < 14; k++) { x.fillStyle = `rgba(90,50,20,${R() * .12})`; x.fillRect(0, y + R() * 16, 1024, .8); }
+  }
+  return c;
+}
+function pegTexture() {
+  const [c, x] = mkCanvas(1024, 400);
+  x.fillStyle = '#34373c'; x.fillRect(0, 0, 1024, 400); x.fillStyle = '#07080a';
+  for (let y = 12; y < 400; y += 22) for (let X = 12; X < 1024; X += 22) { x.beginPath(); x.arc(X, y, 4, 0, TAU); x.fill(); }
+  return c;
+}
+function clothTexture() {
+  const [c, x] = mkCanvas(1024, 1024), R = mulberry32(17);
+  x.fillStyle = '#9f9686'; x.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 26; i++) { const gr = x.createLinearGradient(0, R() * 1024, 1024, R() * 1024); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.5, `rgba(${R() < .5 ? '0,0,0' : '255,255,255'},.07)`); gr.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gr; x.fillRect(0, 0, 1024, 1024); }
+  for (let i = 0; i < 260; i++) { x.fillStyle = pick(PIG, R).hex; x.globalAlpha = .5 + R() * .5; x.beginPath(); x.arc(R() * 1024, R() * 1024, .8 + R() ** 3 * 9, 0, TAU); x.fill(); }
+  x.globalAlpha = 1; return c;
+}
+function windowTexture() {
+  const [c, x] = mkCanvas(256, 512);
+  const gr = x.createLinearGradient(0, 0, 0, 512);
+  gr.addColorStop(0, '#2a2148'); gr.addColorStop(.45, '#a3405a'); gr.addColorStop(.75, '#f0782e'); gr.addColorStop(1, '#ffb347');
+  x.fillStyle = gr; x.fillRect(0, 0, 256, 512);
+  x.fillStyle = '#0a0b0f'; x.fillRect(122, 0, 12, 512); x.fillRect(0, 250, 256, 12);
+  return c;
+}
+
+// ---------- room ----------
+const [brickC, brickB] = brickTextures();
+const wallMat = std(0xffffff, .92, 0, { map: canvasTex(brickC, [6, 2.5]), bumpMap: canvasTex(brickB, [6, 2.5], false), bumpScale: 3 });
+const backWall = mesh(new THREE.PlaneGeometry(12, 5), wallMat, scene, 0, 2.5, -2.3, false, true);
+const leftWallMat = wallMat.clone(); leftWallMat.map = canvasTex(brickC, [4, 2.5]); leftWallMat.bumpMap = canvasTex(brickB, [4, 2.5], false);
+const leftWall = mesh(new THREE.PlaneGeometry(8, 5), leftWallMat, scene, -3.4, 2.5, 1.7, false, true); leftWall.rotation.y = Math.PI / 2;
+const floor = mesh(new THREE.PlaneGeometry(14, 10), std(0xffffff, .78, 0, { map: canvasTex(plankTexture(), [7, 5]) }), scene, 0, 0, 2.7, false, true);
+floor.rotation.x = -Math.PI / 2;
+const cloth = mesh(new THREE.PlaneGeometry(2.6, 2.1), std(0xffffff, .95, 0, { map: canvasTex(clothTexture()) }), scene, .45, .003, -.65, false, true);
+cloth.rotation.x = -Math.PI / 2; cloth.rotation.z = .04;
+const win = new THREE.Group(); win.position.set(2.25, 1.65, -2.29); scene.add(win);
+mesh(new THREE.PlaneGeometry(.75, 1.35), new THREE.MeshBasicMaterial({ map: canvasTex(windowTexture()) }), win, 0, 0, .005, false, false);
+box(.85, .06, .06, M.dark, win, 0, .7, .03); box(.85, .06, .06, M.dark, win, 0, -.7, .03);
+box(.06, 1.46, .06, M.dark, win, -.4, 0, .03); box(.06, 1.46, .06, M.dark, win, .4, 0, .03);
+
+// ---------- workbench ----------
+const BENCH_TOP = .93;
+const bench = new THREE.Group(); scene.add(bench);
+const benchTop = box(2.27, .05, .75, std(0xffffff, .55, 0, { map: canvasTex(benchTopTexture()) }), bench, -1.815, BENCH_TOP - .025, -1.725);
+for (const x of [-2.92, -.71]) for (const z of [-2.07, -1.38]) box(.05, BENCH_TOP - .05, .05, M.metal, bench, x, (BENCH_TOP - .05) / 2, z);
+box(2.2, .04, .7, M.metal, bench, -1.835, .12, -1.725);
+for (const [x, w] of [[-2.45, .8], [-1.25, .8]]) {
+  box(w, .62, .66, M.grey, bench, x, .5, -1.74);
+  box(w - .06, .56, .02, M.blue, bench, x, .5, -1.4);
+  cyl(.012, .012, .02, M.black, bench, x + w / 2 - .1, .62, -1.385).rotation.x = Math.PI / 2;
+}
+const peg = box(2.2, .95, .03, std(0xffffff, .7, .2, { map: canvasTex(pegTexture()) }), bench, -1.835, BENCH_TOP + .475, -2.08);
+box(2.22, .025, .34, M.metal, bench, -1.835, 1.92, -1.93);
+for (const x of [-2.9, -.78]) box(.03, .14, .3, M.metal, bench, x, 1.85, -1.93);
+function makeBin(parent, x) {
+  const g = new THREE.Group(); g.position.set(x, 1.933, -1.93); parent.add(g);
+  const prof = new THREE.Shape(); prof.moveTo(-.15, 0); prof.lineTo(.15, 0); prof.lineTo(.15, .075); prof.lineTo(-.15, .17); prof.closePath();
+  const side = new THREE.ExtrudeGeometry(prof, { depth: .008, bevelEnabled: false });
+  for (const sx of [-.15, .142]) { const s = mesh(side, M.binBlue, g, sx, 0, 0); s.rotation.y = Math.PI / 2; s.position.z = 0; s.position.x = sx; }
+  box(.3, .01, .3, M.binBlue, g, 0, .005, 0); box(.3, .17, .01, M.binBlue, g, 0, .085, -.15); box(.3, .075, .01, M.binBlue, g, 0, .037, .15);
+}
+[-2.65, -2.3, -1.95, -1.4, -1.05].forEach(x => makeBin(bench, x));
+for (let i = 0; i < 4; i++) box(.02, .22 + i * .04, .004, M.steel, bench, -2.6 + i * .12, 1.45, -2.06);
+box(.04, .3, .004, std(0xd8c070, .5), bench, -1.95, 1.5, -2.06);
+
+// ---------- palette, pigments, pools ----------
+const PAL = { x0: -2.0, z0: -1.87, w: .9, d: .5, top: BENCH_TOP + .016 };
+const PAL_PXM = 1024 / PAL.w;
+const [palCv, palCtx] = mkCanvas(1024, Math.round(1024 * PAL.d / PAL.w));
+function primePalette() {
+  const R = mulberry32(19), x = palCtx;
+  x.fillStyle = '#3a2416'; x.fillRect(0, 0, palCv.width, palCv.height);
+  for (let i = 0; i < 380; i++) { x.strokeStyle = `rgba(${R() < .7 ? '210,150,100' : '0,0,0'},${.03 + R() * .06})`; x.lineWidth = .5 + R(); x.beginPath(); const y = R() * palCv.height; x.moveTo(0, y); x.bezierCurveTo(300, y + (R() - .5) * 20, 700, y + (R() - .5) * 20, 1024, y + (R() - .5) * 10); x.stroke(); }
+  for (let i = 0; i < 90; i++) { x.strokeStyle = 'rgba(230,180,140,.08)'; x.lineWidth = .7; x.beginPath(); const sx = R() * 1024, sy = R() * palCv.height; x.moveTo(sx, sy); x.lineTo(sx + (R() - .5) * 60, sy + (R() - .5) * 30); x.stroke(); }
+}
+primePalette();
+const palTex = canvasTex(palCv);
+box(PAL.w, .016, PAL.d, std(0x2a190e, .5), scene, PAL.x0 + PAL.w / 2, BENCH_TOP + .008, PAL.z0 + PAL.d / 2);
+const palFace = mesh(new THREE.PlaneGeometry(PAL.w, PAL.d), std(0xffffff, .42, 0, { map: palTex }), scene, PAL.x0 + PAL.w / 2, PAL.top + .0005, PAL.z0 + PAL.d / 2, false, true);
+palFace.rotation.x = -Math.PI / 2;
+const BLOBS = PIG.map((p, i) => ({ x: -1.96 + i * .0745, z: -1.80 }));
+const SPOTS = []; for (const z of [-1.64, -1.49]) for (let c = 0; c < 6; c++) SPOTS.push({ x: -1.9 + c * .135, z });
+const blobMeshes = PIG.map((p, i) => {
+  const R = mulberry32(100 + i), g = new THREE.IcosahedronGeometry(1, 3), pos = g.attributes.position, o1 = R() * 6, o2 = R() * 6;
+  for (let k = 0; k < pos.count; k++) {
+    let x = pos.getX(k), y = pos.getY(k), z = pos.getZ(k);
+    const n = 1 + .18 * Math.sin(x * 3.1 + o1) * Math.cos(z * 2.7 + o2) + .08 * Math.sin(y * 6 + x * 4);
+    pos.setXYZ(k, x * n, y < 0 ? y * .1 : y * n * (1 + .25 * Math.max(0, x)), z * n);
+  }
+  g.computeVertexNormals();
+  const m = mesh(g, std(p.hex, .2), scene, BLOBS[i].x, PAL.top, BLOBS[i].z);
+  m.scale.set(.028, .017, .024); m.rotation.y = R() * TAU; m.userData.base = m.scale.clone();
+  return m;
+});
+PIG.forEach((p, i) => { // dropper bottles
+  const g = new THREE.Group(); g.position.set(BLOBS[i].x, BENCH_TOP, -1.975); scene.add(g);
+  cyl(.021, .021, .072, std(p.hex, .18), g, 0, .036, 0);
+  cyl(.0215, .0215, .028, M.paper, g, 0, .034, 0);
+  cyl(.01, .021, .012, std(p.hex, .18), g, 0, .078, 0);
+  cyl(.011, .011, .03, M.black, g, 0, .099, 0);
+  mesh(new THREE.SphereGeometry(.009, 12, 8), M.black, g, 0, .118, 0);
+});
+{ // lilac tub, paint pots, books
+  const j = new THREE.Group(); j.position.set(-2.18, BENCH_TOP, -1.62); scene.add(j);
+  cyl(.06, .06, .085, std(0x9b8fe0, .25), j, 0, .042, 0); cyl(.064, .064, .02, M.paper, j, 0, .094, 0);
+  for (const [x, z, col] of [[-2.42, -1.5, 0xe2571c], [-2.3, -1.42, 0xd8202e]]) { const t = new THREE.Group(); t.position.set(x, BENCH_TOP, z); scene.add(t); cyl(.045, .045, .06, std(col, .3), t, 0, .03, 0); cyl(.046, .046, .022, M.paper, t, 0, .03, 0); cyl(.047, .047, .012, std(col, .35), t, 0, .066, 0); }
+  box(.26, .05, .33, M.paper, scene, -2.68, BENCH_TOP + .025, -1.72).rotation.y = .12;
+  box(.27, .008, .34, std(0x8a2a22, .6), scene, -2.68, BENCH_TOP + .054, -1.72).rotation.y = .12;
+  const roll = cyl(.075, .075, 1.0, M.kraft, scene, -2.55, .075, -.55, 24); roll.rotation.z = Math.PI / 2; roll.rotation.y = .3;
+}
+
+// ---------- solvent jar & tool rack ----------
+const JAR = { x: -.86, z: -1.47, top: BENCH_TOP + .11 };
+{
+  const g = new THREE.Group(); g.position.set(JAR.x, BENCH_TOP, JAR.z); scene.add(g);
+  mesh(new THREE.CylinderGeometry(.042, .04, .11, 28, 1, true), std(0xc8dce4, .08, 0, { transparent: true, opacity: .32, side: THREE.DoubleSide }), g, 0, .055, 0, false, false);
+  cyl(.039, .038, .072, std(0x6e6a55, .2, 0, { transparent: true, opacity: .75 }), g, 0, .036, 0);
+}
+const RACK = { z: -1.80, tipY: BENCH_TOP + .02, xs: [-1.04, -.97, -.90, -.83, -.76] };
+{
+  const g = new THREE.Group(); scene.add(g);
+  box(.38, .012, .12, M.orange, g, -.9, BENCH_TOP + .006, RACK.z);
+  for (const x of [-1.083, -.717]) box(.016, .3, .03, M.orange, g, x, BENCH_TOP + .15, RACK.z);
+  box(.38, .018, .05, M.orange, g, -.9, RACK.tipY + .27, RACK.z);
+}
+
+// ---------- easel & canvas ----------
+const easel = new THREE.Group(); easel.position.set(.3, 0, -1.25); scene.add(easel);
+const canvasGroup = new THREE.Group(); canvasGroup.position.set(0, 1.38, 0); canvasGroup.rotation.x = -.06; easel.add(canvasGroup);
+box(CW + .01, CH + .01, .025, M.canvasSide, canvasGroup, 0, 0, 0).castShadow = false;
+const paintTex = canvasTex(paintCv);
+const heightTex = canvasTex(heightCv, null, false);
+const canvasMat = std(0xffffff, .5, 0, { map: paintTex, bumpMap: heightTex, bumpScale: 1.6 });
+const canvasFace = mesh(new THREE.PlaneGeometry(CW, CH), canvasMat, canvasGroup, 0, 0, .0128, false, true);
+beam(V(0, -1.05, -.04), V(0, 1.07, -.04), .05, .035, M.easel, canvasGroup);
+box(1.32, .035, .1, M.easel, canvasGroup, 0, -.47, .02);
+box(.15, .045, .1, M.easel, canvasGroup, 0, .476, .005);
+box(.09, .06, .06, M.easel, canvasGroup, 0, 1.08, -.04);
+for (const s of [-1, 1]) beam(V(s * .5, 0, .05), V(s * .06, 2.42, -.16), .045, .032, M.easel, easel);
+beam(V(0, 0, -.78), V(0, 2.25, -.12), .045, .032, M.easel, easel);
+beam(V(-.409, .5, .0065), V(.409, .5, .0065), .03, .025, M.easel, easel);
+easel.updateMatrixWorld(true);
+
+// ---------- light stand ----------
+const stand = new THREE.Group(); stand.position.set(1.55, 0, -.25); stand.rotation.y = Math.atan2(.3 - 1.55, -1.25 + .25); scene.add(stand);
+for (let i = 0; i < 3; i++) { const a = i / 3 * TAU + .4; beam(V(Math.cos(a) * .42, 0, Math.sin(a) * .42), V(0, .72, 0), .018, .018, M.black, stand); }
+cyl(.014, .014, .85, M.black, stand, 0, 1.13, 0);
+box(.82, .025, .025, M.black, stand, 0, 1.56, 0);
+const panelMat = std(0x111111, .4, 0, { emissive: 0xf2f4ff, emissiveIntensity: 2.4 });
+for (const x of [-.27, 0, .27]) {
+  const p = new THREE.Group(); p.position.set(x, 1.56, .03); p.rotation.x = .08; stand.add(p);
+  box(.24, .21, .04, M.dark, p, 0, 0, 0); mesh(new THREE.PlaneGeometry(.215, .185), panelMat, p, 0, 0, .021, false, false);
+}
+
+// ---------- lights ----------
+scene.add(new THREE.HemisphereLight(0x3a4f8a, 0x0b0b10, .55));
+function spot(color, intensity, pos, target, angle, pen, shadow) {
+  const s = new THREE.SpotLight(color, intensity, 0, angle, pen, 2);
+  s.position.copy(pos); s.target.position.copy(target); scene.add(s, s.target);
+  if (shadow) { s.castShadow = true; s.shadow.mapSize.set(shadow, shadow); s.shadow.bias = -.0004; s.shadow.normalBias = .02; s.shadow.camera.near = .3; s.shadow.camera.far = 6; }
+  return s;
+}
+const CANVAS_C = V(.3, 1.38, -1.25);
+spot(0xf4f6ff, 5.2, V(1.5, 1.6, -.2), CANVAS_C, .62, .5, 2048);
+spot(0xffd9ad, 16, V(-1.3, 2.75, -.45), V(-1.5, BENCH_TOP, -1.65), .8, .7, 1024);
+spot(0x4a64c8, 30, V(.6, 3.4, .6), V(.4, 1.7, -2.3), .95, 1, 0);
+spot(0x3550a8, 14, V(-2.6, 3.2, .8), V(-2.4, 1.5, -2.3), .9, 1, 0);
+const winLight = new THREE.PointLight(0xff8a3a, 3.5, 3.2, 2); winLight.position.set(2.2, 1.6, -1.9); scene.add(winLight);
+
+// ---------- robot ----------
+const RB = V(-.7, 0, -.62);
+const SH = V(-.7, 1.38, -.62);
+const L1 = .78, L2 = .74, ROD = .38, TOOL_LEN = .37, LT = ROD + TOOL_LEN;
+
+const robot = new THREE.Group(); robot.position.copy(RB); scene.add(robot);
+cyl(.27, .29, .3, M.white, robot, 0, .17, 0, 48);
+cyl(.293, .293, .04, M.black, robot, 0, .03, 0, 48);
+{ const led = mesh(new THREE.TorusGeometry(.255, .007, 8, 64), M.led, robot, 0, .33, 0, false, false); led.rotation.x = Math.PI / 2; }
+cyl(.25, .27, .03, M.grey, robot, 0, .335, 0, 48);
+cyl(.17, .19, .62, M.white, robot, 0, .66, 0, 48);
+cyl(.178, .182, .06, M.black, robot, 0, .62, 0, 48);
+cyl(.173, .173, .015, M.dark, robot, 0, .86, 0, 48);
+box(.09, .03, .01, M.dark, robot, 0, .45, .19);
+cyl(.115, .13, .2, M.grey, robot, 0, 1.07, 0);
+cyl(.1, .1, .1, M.white, robot, 0, 1.22, 0);
+
+const armPlane = new THREE.Group(); armPlane.position.set(0, 1.38, 0); robot.add(armPlane);
+cyl(.095, .095, .1, M.white, armPlane, 0, -.06, 0);
+cyl(.097, .097, .015, M.black, armPlane, 0, -.105, 0);
+const shoulderJ = new THREE.Group(); armPlane.add(shoulderJ);
+const zCyl = (r, len, mat, parent, x, z = 0) => { const m = cyl(r, r, len, mat, parent, x, 0, z, 32); m.rotation.x = Math.PI / 2; return m; };
+zCyl(.088, .2, M.white, shoulderJ, 0); zCyl(.07, .012, M.black, shoulderJ, 0, .105); zCyl(.07, .012, M.black, shoulderJ, 0, -.105);
+{ const a = mesh(new THREE.CapsuleGeometry(.058, L1 - .14, 8, 20), M.white, shoulderJ, L1 / 2); a.rotation.z = -Math.PI / 2; }
+const elbowJ = new THREE.Group(); elbowJ.position.x = L1; shoulderJ.add(elbowJ);
+zCyl(.072, .17, M.white, elbowJ, 0); zCyl(.058, .012, M.black, elbowJ, 0, .09); zCyl(.058, .012, M.black, elbowJ, 0, -.09);
+{ const f = mesh(new THREE.CylinderGeometry(.04, .052, L2 - .1, 24), M.white, elbowJ, L2 / 2 - .02); f.rotation.z = -Math.PI / 2; }
+cyl(.048, .048, .03, M.black, elbowJ, L2 - .06, 0, 0).rotation.z = Math.PI / 2;
+
+const toolG = new THREE.Group(); scene.add(toolG);       // world-space wrist frame, +Z = tool axis
+mesh(new THREE.SphereGeometry(.05, 24, 16), M.white, toolG);
+{ const r = cyl(.042, .042, .03, M.black, toolG, 0, 0, .035); r.rotation.x = Math.PI / 2; }
+{ const r = cyl(.008, .008, ROD - .05, M.black, toolG, 0, 0, .05 + (ROD - .05) / 2); r.rotation.x = Math.PI / 2; }
+{ const r = cyl(.02, .02, .012, M.steel, toolG, 0, 0, ROD - .006); r.rotation.x = Math.PI / 2; }
+const mount = new THREE.Group(); mount.position.z = ROD; toolG.add(mount);
+
+// Tools are built along +Z from the coupler (0) to the working tip (TOOL_LEN).
+const TAN = [196, 168, 122];
+function zPart(geo, mat, parent, z0, z1, rx = 0) { const m = mesh(geo, mat, parent, 0, 0, (z0 + z1) / 2); m.rotation.x = Math.PI / 2 + rx; return m; }
+function makeTool(kind) {
+  const g = new THREE.Group(), L = TOOL_LEN;
+  zPart(new THREE.CylinderGeometry(.031, .031, .09, 28), M.black, g, 0, .09);
+  zPart(new THREE.CylinderGeometry(.033, .033, .01, 28), M.dark, g, .085, .095);
+  const tipMat = std(rgbStr(TAN), .55);
+  const bristle = std(rgbStr(TAN), .7);
+  const handle = (col, r0, r1, z1) => zPart(new THREE.CylinderGeometry(r1, r0, z1 - .09, 16), std(col, .35), g, .09, z1);
+  const slab = (w, t, z0, z1, mat) => box(w, t, z1 - z0, mat, g, 0, 0, (z0 + z1) / 2);
+  if (kind === 'wide') {
+    handle(0xf2a516, .012, .009, .27); slab(.072, .014, .27, .315, M.steel);
+    slab(.068, .011, .315, .35, bristle); slab(.066, .01, .35, L, tipMat);
+  } else if (kind === 'flat') {
+    handle(0x7a2a1c, .009, .007, .28); slab(.042, .01, .28, .315, M.steel);
+    slab(.04, .008, .315, .345, bristle); slab(.038, .007, .345, L, tipMat);
+  } else if (kind === 'filbert') {
+    handle(0x1f4a3a, .008, .0065, .29); slab(.028, .009, .29, .32, M.steel);
+    slab(.026, .007, .32, .345, bristle);
+    const t = mesh(new THREE.SphereGeometry(1, 16, 10), tipMat, g, 0, 0, .352); t.scale.set(.013, .0035, .019);
+  } else if (kind === 'round') {
+    handle(0x2a5bd7, .007, .0055, .29); zPart(new THREE.CylinderGeometry(.006, .0065, .03, 14), M.steel, g, .29, .32);
+    zPart(new THREE.CylinderGeometry(.0055, .006, .02, 12), bristle, g, .32, .34);
+    zPart(new THREE.ConeGeometry(.0055, L - .34, 12), tipMat, g, .34, L, Math.PI);
+  } else { // palette knife
+    handle(0x5a2e1a, .011, .01, .24); zPart(new THREE.CylinderGeometry(.009, .011, .02, 14), std(0xb08a3a, .3, .8), g, .24, .26);
+    beam(V(0, 0, .26), V(0, .012, .305), .004, .003, M.steel, g);
+    const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.quadraticCurveTo(.022, .015, .017, .05); sh.quadraticCurveTo(.004, .066, 0, .068); sh.quadraticCurveTo(-.004, .066, -.017, .05); sh.quadraticCurveTo(-.022, .015, 0, 0);
+    const blade = mesh(new THREE.ExtrudeGeometry(sh, { depth: .0012, bevelEnabled: false }), std(0xc4cad2, .22, .95), g, 0, .012, .302);
+    blade.rotation.x = Math.PI / 2; blade.userData.tip = true;
+    tipMat.color.set(0xc4cad2);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return { g, tipMat, kind };
+}
+const toolSet = {};
+TOOL_ORDER.forEach((kind, i) => {
+  const t = makeTool(kind); toolSet[kind] = t; t.slot = i; scene.add(t.g);
+});
+const qDown = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V(1, 0, 0), V(0, 0, 1), V(0, -1, 0)));
+function rackTool(kind) { // hang it back on the rack
+  const t = toolSet[kind]; scene.add(t.g);
+  t.g.position.set(RACK.xs[t.slot], RACK.tipY + TOOL_LEN, RACK.z); t.g.quaternion.copy(qDown);
+}
+function holdTool(kind) { const t = toolSet[kind]; mount.add(t.g); t.g.position.set(0, 0, 0); t.g.quaternion.identity(); }
+TOOL_ORDER.forEach(rackTool);
+function setTip(kind, rgb) { if (kind && kind !== 'knife') toolSet[kind].tipMat.color.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace); }
+
+// ---------- kinematics ----------
+const _m = new THREE.Matrix4();
+function quatFrom(D, X) {
+  const z = D.clone().normalize(); let x = X.clone().addScaledVector(z, -X.dot(z));
+  if (x.lengthSq() < 1e-6) x = Math.abs(z.x) < .9 ? V(1, 0, 0).addScaledVector(z, -z.x) : V(0, 0, 1).addScaledVector(z, -z.z);
+  x.normalize(); const y = new THREE.Vector3().crossVectors(z, x);
+  return new THREE.Quaternion().setFromRotationMatrix(_m.makeBasis(x, y, z));
+}
+function solvePose(P, D, X) {
+  const W = P.clone().addScaledVector(D, -LT), d = W.sub(SH);
+  const yaw = Math.atan2(d.z, d.x), r = Math.hypot(d.x, d.z), y = d.y;
+  const dist = clamp(Math.hypot(r, y), Math.abs(L1 - L2) + .03, L1 + L2 - .004);
+  const B = Math.acos(clamp((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist), -1, 1));
+  const G = Math.acos(clamp((L1 * L1 + L2 * L2 - dist * dist) / (2 * L1 * L2), -1, 1));
+  return { yaw, a1: Math.atan2(y, r) + B, a2: -(Math.PI - G), q: quatFrom(D, X) };
+}
+function wristOf(p, out = new THREE.Vector3()) {
+  const r = L1 * Math.cos(p.a1) + L2 * Math.cos(p.a1 + p.a2), y = L1 * Math.sin(p.a1) + L2 * Math.sin(p.a1 + p.a2);
+  return out.set(SH.x + r * Math.cos(p.yaw), SH.y + y, SH.z + r * Math.sin(p.yaw));
+}
+function tipOf(p, out = new THREE.Vector3()) { wristOf(p, out); return out.addScaledVector(V(0, 0, 1).applyQuaternion(p.q), LT); }
+const poseClone = p => ({ yaw: p.yaw, a1: p.a1, a2: p.a2, q: p.q.clone() });
+function poseLerp(a, b, t) {
+  const dy = ((b.yaw - a.yaw + Math.PI) % TAU + TAU) % TAU - Math.PI;
+  return { yaw: a.yaw + dy * t, a1: lerp(a.a1, b.a1, t), a2: lerp(a.a2, b.a2, t), q: a.q.clone().slerp(b.q, t) };
+}
+const _w = new THREE.Vector3();
+function applyPose(p) {
+  armPlane.rotation.y = -p.yaw; shoulderJ.rotation.z = p.a1; elbowJ.rotation.z = p.a2;
+  toolG.position.copy(wristOf(p, _w)); toolG.quaternion.copy(p.q);
+}
+
+// Where the tip should be, and how the tool should lean, for each kind of work.
+const DOWN = V(0, -1, 0);
+const CB = (() => { // canvas basis in world
+  const o = canvasGroup.localToWorld(V(0, 0, .0128));
+  const right = canvasGroup.localToWorld(V(1, 0, .0128)).sub(o).normalize();
+  const up = canvasGroup.localToWorld(V(0, 1, .0128)).sub(o).normalize();
+  const normal = new THREE.Vector3().crossVectors(right, up).normalize();
+  return { o, right, up, normal };
+})();
+function canvasPoint(x, y, off) {
+  return CB.o.clone().addScaledVector(CB.right, (x / PW - .5) * CW).addScaledVector(CB.up, (.5 - y / PH) * CH).addScaledVector(CB.normal, off);
+}
+function canvasTip(st, s, off) {
+  const q = strokeAt(st, s), P = canvasPoint(q.x, q.y, off + .001);
+  const tw = CB.right.clone().multiplyScalar(q.tx).addScaledVector(CB.up, -q.ty);
+  const nw = CB.right.clone().multiplyScalar(-q.ty).addScaledVector(CB.up, -q.tx);
+  const fromS = P.clone().sub(SH).normalize();
+  const D = CB.normal.clone().multiplyScalar(-.55).addScaledVector(fromS, .45).addScaledVector(tw, -.3).normalize();
+  return { P, D, X: nw };
+}
+function benchTip(x, y, z, Xdir) {
+  const P = V(x, y, z), fromS = P.clone().sub(SH).normalize();
+  const D = DOWN.clone().multiplyScalar(.6).addScaledVector(fromS, .4).normalize();
+  const X = Xdir || V(-D.z, 0, D.x);
+  return { P, D, X };
+}
+const rackTip = (slot, lift) => ({ P: V(RACK.xs[slot], RACK.tipY + lift, RACK.z), D: DOWN.clone(), X: V(1, 0, 0) });
+const solve = k => solvePose(k.P, k.D, k.X);
+const REST = solve({ P: V(-.62, 1.12, -1.02), D: V(.114, -.852, -.511).normalize(), X: V(1, 0, 0) });
+
+// ---------- studio state ----------
+const state = {
+  status: 'Changing tool', phase: 'tool', pass: 0, passDone: 0, passTotal: PASSES[0].quota,
+  strokes: 0, colours: 0, ml: 0, pig: new Float64Array(12), time: 0,
+  tool: null, load: 0, dirty: false, mixing: null, current: null, prevRGB: null,
+  finished: false, hoverMM: null, spotNext: 0, paintDirty: true, palDirty: true,
+};
+const cur = { pose: poseClone(REST) };
+
+// segments: {status, phase, dur, begin?, draw?(t0,t1), pose(t), end?}
+const J = (status, phase, target, dur, extra) => Object.assign({
+  status, phase, dur, begin() { this.A = poseClone(cur.pose); }, pose(t) { return poseLerp(this.A, target, smoother(t)); },
+}, extra);
+const C = (status, phase, dur, tipFn, extra) => Object.assign({ status, phase, dur, pose(t) { return solve(tipFn(t)); } }, extra);
+const jdur = P => .3 + tipOf(cur.pose).distanceTo(P) * .6;
+const moveTo = (status, phase, k, extra) => J(status, phase, solve(k), jdur(k.P), extra);
+
+// ---------- palette marks ----------
+const palPx = (x, z) => [(x - PAL.x0) * PAL_PXM, (z - PAL.z0) * PAL_PXM];
+const SW_R = .028;
+function swirlPoint(spot, t) {
+  const a = t * 2 * TAU, r = SW_R * (.35 + .65 * Math.sin(Math.PI * t)), s = SPOTS[spot];
+  return { x: s.x + Math.cos(a) * r, z: s.z + Math.sin(a) * r, a };
+}
+function drawSwirl(spot, rgb, t0, t1) {
+  const n = Math.max(1, Math.ceil((t1 - t0) / .004)), x = palCtx;
+  for (let k = 0; k <= n; k++) {
+    const t = t0 + (t1 - t0) * k / n; if (t < .1 || t > .9) continue;
+    const p = swirlPoint(spot, t), [px, py] = palPx(p.x, p.z);
+    x.fillStyle = rgbStr(rgb, .97 + .06 * Math.sin(t * 90)); x.beginPath(); x.arc(px, py, 9, 0, TAU); x.fill();
+    x.strokeStyle = rgbStr(rgb, 1.12); x.lineWidth = 1.1; x.beginPath(); x.arc(px, py, 6, p.a, p.a + 1.4); x.stroke();
+    x.strokeStyle = rgbStr(rgb, .82); x.beginPath(); x.arc(px, py, 8, p.a + 2, p.a + 3); x.stroke();
+  }
+  state.palDirty = true;
+}
+function drawDab(spot, rgb, t0, t1) {
+  const s = SPOTS[spot], x = palCtx;
+  for (let t = t0; t <= t1; t += .02) {
+    if (t < .25 || t > .75) continue;
+    const [px, py] = palPx(s.x + .022 * Math.sin(TAU * t), s.z);
+    x.fillStyle = rgbStr(rgb, .9 + .15 * Math.sin(t * 40)); x.fillRect(px - 2, py - 7, 4, 14);
+  }
+  state.palDirty = true;
+}
+
+// ---------- what the robot does ----------
+function* changeTool(kind) {
+  if (state.tool === kind) return;
+  const st = 'Changing tool';
+  if (state.tool) {
+    const slot = toolSet[state.tool].slot, held = state.tool;
+    yield moveTo(st, 'tool', rackTip(slot, .12));
+    yield C(st, 'tool', .45, t => rackTip(slot, .12 * (1 - smooth(t))), { end() { rackTool(held); state.tool = null; } });
+    yield C(st, 'tool', .35, t => rackTip(slot, .12 * smooth(t)));
+  }
+  if (kind) {
+    const slot = toolSet[kind].slot;
+    yield moveTo(st, 'tool', rackTip(slot, .12));
+    yield C(st, 'tool', .45, t => rackTip(slot, .12 * (1 - smooth(t))), { end() { holdTool(kind); state.tool = kind; setTip(kind, TAN); state.dirty = false; } });
+    yield C(st, 'tool', .35, t => rackTip(slot, .12 * smooth(t)));
+  }
+}
+function* clean() {
+  const st = 'Cleaning brush', jt = (h, a = 0) => benchTip(JAR.x + Math.cos(a) * .012, JAR.top + h, JAR.z + Math.sin(a) * .012);
+  yield moveTo(st, 'clean', jt(.07));
+  yield C(st, 'clean', 1.0, t => jt(t < .2 ? lerp(.07, -.07, smooth(t / .2)) : t > .8 ? lerp(-.07, .07, smooth((t - .8) / .2)) : -.07, t * 3 * TAU),
+    { end() { setTip(state.tool, TAN); state.dirty = false; } });
+}
+function* mix(cl) {
+  const spot = state.spotNext++ % SPOTS.length; cl.spot = spot;
+  state.colours++; state.mixing = cl;
+  const amount = cl.ml * 1.12, acc = [];
+  for (const part of cl.recipe.parts) {
+    const b = BLOBS[part.i], top = PAL.top + .014;
+    yield moveTo('Mixing', 'mix', benchTip(b.x, top + .06, b.z));
+    yield C('Mixing', 'mix', .4, t => benchTip(b.x, top + .06 * (1 - Math.sin(Math.PI * t)), b.z), {
+      end() {
+        const ml = amount * part.w; state.ml += ml; state.pig[part.i] += ml;
+        const m = blobMeshes[part.i]; m.scale.copy(m.userData.base).multiplyScalar(Math.max(.55, 1 - state.pig[part.i] / 900));
+        setTip(state.tool, PIG[part.i].rgb);
+      },
+    });
+    acc.push(part);
+    const now = mixParts(acc), sp = t => { const p = swirlPoint(spot, t), h = t < .1 ? lerp(.05, .003, t / .1) : t > .9 ? lerp(.003, .05, (t - .9) / .1) : .003; return benchTip(p.x, PAL.top + h, p.z, V(-Math.sin(p.a), 0, Math.cos(p.a))); };
+    yield moveTo('Mixing', 'mix', sp(0));
+    yield C('Mixing', 'mix', 1.1, sp, { draw(t0, t1) { drawSwirl(spot, now, t0, t1); }, end() { setTip(state.tool, now); } });
+  }
+  state.current = cl;
+}
+function* load(cl, P) {
+  const s = SPOTS[cl.spot], k = t => benchTip(s.x + .022 * Math.sin(TAU * t), PAL.top + .003 + .05 * (1 - Math.sin(Math.PI * t)), s.z);
+  yield moveTo(P.name, 'load', k(0));
+  yield C(P.name, 'load', .55, k, { draw(t0, t1) { if (P.tool !== 'knife') drawDab(cl.spot, cl.rgb, t0, t1); }, end() { setTip(state.tool, cl.rgb); } });
+}
+const HOVER = .035;
+function* stroke(st, cl, P, loadNow) {
+  const T = TOOLS[P.tool], a = canvasTip(st, 0, HOVER);
+  yield J(P.name, 'paint', solve(a), .05 + tipOf(cur.pose).distanceTo(a.P) * .5);
+  yield C(P.name, 'paint', .05, t => canvasTip(st, 0, HOVER * (1 - t)));
+  yield C(P.name, 'paint', Math.max(.12, st.S / T.speed), t => canvasTip(st, t * st.S, 0), {
+    begin() { prepareStroke(st, cl, loadNow, state.prevRGB); },
+    draw(t0, t1) { drawStroke(st, t0 * st.S, t1 * st.S); state.paintDirty = true; },
+    end() { state.strokes++; state.passDone++; st.b = st.k = null; },
+  });
+  yield C(P.name, 'paint', .05, t => canvasTip(st, st.S, HOVER * t));
+}
+function* studio() {
+  for (let pi = 0; pi < PASSES.length; pi++) {
+    const P = PASSES[pi], T = TOOLS[P.tool];
+    state.pass = pi; state.passDone = 0; state.passTotal = P.quota;
+    yield* changeTool(P.tool);
+    const plan = planPass(pi);
+    state.passTotal = plan.total;
+    for (const cl of plan.clusters) {
+      if (state.dirty) yield* clean();
+      yield* mix(cl);
+      let left = 0;
+      for (const st of cl.strokes) {
+        if (left <= 0) { yield* load(cl, P); left = T.perLoad; }
+        yield* stroke(st, cl, P, left / T.perLoad);
+        left--;
+      }
+      state.dirty = true; state.prevRGB = cl.rgb;
+    }
+  }
+  yield* changeTool(null);
+  yield J('Finished', 'rest', poseClone(REST), 2.2, { end() { state.finished = true; } });
+}
+
+// ---------- simulation clock ----------
+let script = studio(), seg = null;
+function simAdvance(budget, deadline = Infinity) {
+  while (budget > 1e-9 && !state.finished) {
+    if (!seg) {
+      const r = script.next();
+      if (r.done) { state.finished = true; break; }
+      seg = r.value; seg.t = 0; seg.begin?.();
+      state.status = seg.status; state.phase = seg.phase;
+    }
+    const take = Math.min(budget, seg.dur - seg.t), t0 = seg.dur > 0 ? seg.t / seg.dur : 0;
+    seg.t += take; budget -= take; state.time += take;
+    const t1 = seg.dur > 0 ? seg.t / seg.dur : 1;
+    seg.draw?.(t0, t1);
+    if (seg.t >= seg.dur - 1e-9) {
+      cur.pose = seg.pose(1); seg.end?.(); seg = null;
+      if (performance.now() > deadline) break;
+    }
+  }
+  if (state.finished) { state.status = 'Finished'; state.phase = 'rest'; }
+}
+const livePose = () => seg ? seg.pose(seg.dur > 0 ? seg.t / seg.dur : 1) : cur.pose;
+
+function restart() {
+  rnd = mulberry32((Math.random() * 2 ** 31) | 0);
+  primeCanvas(); primePalette();
+  blobMeshes.forEach(m => m.scale.copy(m.userData.base));
+  Object.assign(state, { status: 'Changing tool', phase: 'tool', pass: 0, passDone: 0, passTotal: PASSES[0].quota, strokes: 0, colours: 0, ml: 0, time: 0,
+    load: 0, dirty: false, mixing: null, current: null, prevRGB: null, finished: false, spotNext: 0, paintDirty: true, palDirty: true });
+  state.pig.fill(0);
+  TOOL_ORDER.forEach(rackTool); state.tool = null;
+  cur.pose = poseClone(livePose()); script = studio(); seg = null;
+}
+primeCanvas();
+
+// ---------- HUD ----------
+const $ = id => document.getElementById(id);
+const fmtInt = n => Math.round(n).toLocaleString('en-US');
+const fmtMl = v => v < 100 ? v.toFixed(1) : String(Math.round(v));
+const fmtPig = v => v < 10 ? v.toFixed(1) : String(Math.round(v));
+const pad = n => String(n).padStart(2, '0');
+const fmtTime = s => { s = Math.floor(s); const h = (s / 3600) | 0, m = ((s % 3600) / 60) | 0; return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${pad(m)}:${pad(s % 60)}`; };
+$('pig').innerHTML = PIG.map((p, i) => `<span title="${p.name}"><i style="background:${p.hex}"></i><b id="pg${i}">0.0</b></span>`).join('');
+const STAR = '<svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M6 .8l1.5 3.3 3.6.4-2.7 2.4.8 3.5L6 8.6 2.8 10.4l.8-3.5L.9 4.5l3.6-.4z"/></svg>';
+const CHECK = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3l2.6 2.5L10 3.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const row = (k, v) => `<div class="row"><span>${k}</span><b>${v}</b></div>`;
+const prog = f => `<div class="prog"><i style="width:${(clamp(f, 0, 1) * 100).toFixed(1)}%"></i></div>`;
+const swatch = rgb => `<div class="sw" style="background:${rgbStr(rgb)}"></div>`;
+const recipe = r => r.parts.map(p => `<div class="rc"><i style="background:${PIG[p.i].hex}"></i>${PIG[p.i].name}<b>${p.pct}%</b></div>`).join('');
+let speed = 1, paused = false;
+function panelHTML() {
+  const s = state, P = PASSES[s.pass], passLine = `${P.name}, pass ${s.pass + 1} of ${PASSES.length}`;
+  if (s.finished) return `<h2>The Gale Light</h2><div class="st">${CHECK}Finished, still wet</div>${row('Strokes laid', fmtInt(s.strokes))}${row('This pass', `${fmtInt(s.passDone)} of ${fmtInt(s.passTotal)}`)}${prog(1)}<button type="button" class="again" id="again">Start a new canvas</button>`;
+  if (s.hoverMM != null) return `<h2>The Gale Light</h2><div class="st">${STAR}${passLine}</div>${row('Strokes laid', fmtInt(s.strokes))}${row('Paint thickness here', s.hoverMM.toFixed(1) + ' mm')}${prog(s.hoverMM / 2.5)}`;
+  if (s.phase === 'mix' && s.mixing) return `<h2>Palette</h2><div class="st">${STAR}Mixing this colour now</div>${swatch(s.mixing.rgb)}${recipe(s.mixing.recipe)}${row('Colours mixed', s.colours)}`;
+  if (speed === 1) return `<h2>Paint robot</h2><div class="st">${STAR}${s.status}</div>${row('Tool', s.tool ? TOOLS[s.tool].label : 'None')}${row('Strokes laid', fmtInt(s.strokes))}${row('Colours mixed', s.colours)}${s.current ? swatch(s.current.rgb) + recipe(s.current.recipe) : ''}`;
+  return `<h2>The Gale Light</h2><div class="st">${STAR}${passLine}</div>${row('Strokes laid', fmtInt(s.strokes))}${row('This pass', `${fmtInt(s.passDone)} of ${fmtInt(s.passTotal)}`)}${prog(s.passDone / s.passTotal)}`;
+}
+let lastPanel = '';
+function updateHUD() {
+  $('vStrokes').textContent = fmtInt(state.strokes);
+  $('vColours').textContent = state.colours;
+  $('vPaint').textContent = fmtMl(state.ml);
+  $('vTime').textContent = fmtTime(state.time);
+  for (let i = 0; i < 12; i++) $('pg' + i).textContent = fmtPig(state.pig[i]);
+  const st = paused ? 'Paused' : state.status;
+  if ($('vStatus').textContent !== st) $('vStatus').textContent = st;
+  const html = panelHTML();
+  if (html !== lastPanel) { $('panel').innerHTML = html; lastPanel = html; }
+}
+$('panel').addEventListener('click', e => { if (e.target.closest('#again')) { restart(); lastPanel = ''; } });
+
+// ---------- controls ----------
+function setSpeed(v) {
+  speed = v; shotClock = 0;
+  document.querySelectorAll('[data-speed]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.speed === v)));
+}
+function setPaused(p) {
+  paused = p;
+  $('bPlay').setAttribute('aria-label', p ? 'Play' : 'Pause');
+  $('playIcon').setAttribute('d', p ? 'M4 2l8 5-8 5z' : 'M3.5 2h2.4v10H3.5zM8.1 2h2.4v10H8.1z');
+}
+document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
+$('bPlay').addEventListener('click', () => setPaused(!paused));
+$('bFull').addEventListener('click', () => {
+  try {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+  } catch (e) { /* not available here */ }
+});
+const controls = new OrbitControls(camera, glCanvas);
+controls.enableDamping = true; controls.dampingFactor = .08;
+controls.minDistance = .2; controls.maxDistance = 7; controls.maxPolarAngle = Math.PI * .53;
+let auto = true, toastTimer = 0;
+function setAuto(v) {
+  auto = v; $('bCam').setAttribute('aria-pressed', String(v));
+  if (!v) { controls.target.copy(camTgt); $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4200); }
+  else $('toast').hidden = true;
+}
+controls.addEventListener('start', () => { if (auto) setAuto(false); });
+$('bCam').addEventListener('click', () => setAuto(!auto));
+glCanvas.addEventListener('dblclick', () => setAuto(true));
+addEventListener('keydown', e => {
+  if (e.target.closest?.('button') && (e.key === ' ' || e.key === 'Enter')) return;
+  if (e.key === ' ') { e.preventDefault(); setPaused(!paused); }
+  else if ('1234'.includes(e.key) && e.key.length === 1) setSpeed([1, 50, 150, 800][+e.key - 1]);
+  else if (e.key === 'c' || e.key === 'C') setAuto(!auto);
+});
+
+// hover: how thick is the paint under the cursor
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let hoverWant = false, hoverAt = 0, mx = 0, my = 0;
+glCanvas.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  mx = e.clientX; my = e.clientY; mouse.set(mx / innerWidth * 2 - 1, -(my / innerHeight) * 2 + 1); hoverWant = true;
+});
+glCanvas.addEventListener('pointerleave', () => { hoverWant = false; state.hoverMM = null; $('ring').hidden = true; });
+function updateHover(now) {
+  if (!hoverWant || now - hoverAt < 90) return;
+  hoverAt = now;
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObject(canvasFace)[0];
+  if (!hit) { state.hoverMM = null; $('ring').hidden = true; return; }
+  const px = clamp((hit.uv.x * PW) | 0, 1, PW - 2), py = clamp(((1 - hit.uv.y) * PH) | 0, 1, PH - 2);
+  const d = hctx.getImageData(px - 1, py - 1, 3, 3).data; let h = 0; for (let i = 0; i < 36; i += 4) h += d[i];
+  state.hoverMM = Math.max(0, h / 9 - 10) / 255 * 2.5;
+  const r = $('ring'); r.hidden = false; r.style.left = mx + 'px'; r.style.top = my + 'px';
+}
+
+// ---------- camera director ----------
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const camPos = V(.25, 1.7, 2.75), camTgt = V(-.45, 1.15, -1.3), tipSmooth = CANVAS_C.clone();
+let camFov = 42, shot = 'wide', want = 'wide', shotAge = 0, wantAge = 0, shotClock = 0, finishedAt = -1;
+const SHOTS = {
+  wide: () => [V(.25, 1.7, 2.75), V(-.45, 1.15, -1.3), 42],
+  canvas: () => [V(.32, 1.45, .75), V(.3, 1.36, -1.25), 40],
+  angle: () => [V(1.2, 1.55, .3), V(.15, 1.32, -1.25), 40],
+  bench: () => [V(-1.4, 1.52, -.78), V(-1.52, BENCH_TOP, -1.66), 46],
+  rack: () => [V(-.45, 1.5, -.9), V(-.93, 1.12, -1.78), 44],
+  follow: () => [tipSmooth.clone().addScaledVector(CB.normal, .5).addScaledVector(CB.right, -.2).addScaledVector(CB.up, .05), tipSmooth.clone(), 44],
+  close: () => [tipSmooth.clone().addScaledVector(CB.normal, .28).addScaledVector(CB.right, -.1).addScaledVector(CB.up, .03), tipSmooth.clone().addScaledVector(CB.right, .05), 46],
+};
+let forcedShot = null;
+function desiredShot(nowS) {
+  if (forcedShot) return forcedShot;
+  if (state.finished) { if (finishedAt < 0) finishedAt = nowS; return nowS - finishedAt < 5 ? 'wide' : 'angle'; }
+  finishedAt = -1;
+  if (speed >= 150) return ['canvas', 'wide', 'angle'][Math.floor(shotClock / 7) % 3];
+  if (speed === 50) return ['canvas', 'wide'][Math.floor(shotClock / 9) % 2];
+  if (state.time < .6) return 'wide';
+  switch (state.phase) {
+    case 'tool': return 'rack';
+    case 'mix': case 'clean': return 'bench';
+    case 'load': return shot === 'bench' ? 'bench' : shot;
+    case 'paint': return state.tool === 'knife' ? 'close' : (shotClock % 16 < 10 ? 'follow' : 'canvas');
+    default: return 'wide';
+  }
+}
+function updateCamera(dt, nowS, tip) {
+  tipSmooth.lerp(tip, 1 - Math.exp(-dt * 4));
+  if (!auto) { controls.update(); return; }
+  const w = desiredShot(nowS);
+  if (w !== want) { want = w; wantAge = 0; }
+  wantAge += dt; shotAge += dt;
+  if (want !== shot && wantAge > .4 && (shotAge > (speed === 1 ? 2.2 : .8) || state.finished)) { shot = want; shotAge = 0; }
+  const [p, t, f] = SHOTS[shot](), k = reduced ? 1 : 1 - Math.exp(-dt * 1.7);
+  camPos.lerp(p, k); camTgt.lerp(t, k); camFov = lerp(camFov, f, k);
+  camera.position.copy(camPos); camera.lookAt(camTgt); controls.target.copy(camTgt);
+  const aspect = innerWidth / innerHeight, fov = camFov * clamp(1.45 / aspect, 1, 2.1);
+  if (Math.abs(camera.fov - fov) > .01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+}
+
+// ---------- main loop ----------
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+let last = performance.now(), hudAt = 0, heightFlip = 0;
+const _tip = new THREE.Vector3();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (!paused && !state.finished) simAdvance(dt * speed, now + 11);
+  const pose = livePose(); applyPose(pose);
+  shotClock += dt;
+  updateCamera(dt, now / 1000, tipOf(pose, _tip));
+  if (state.paintDirty) { paintTex.needsUpdate = true; if (++heightFlip % (speed > 50 ? 3 : 2) === 0 || speed === 1) { heightTex.needsUpdate = true; state.paintDirty = false; } }
+  if (state.palDirty) { palTex.needsUpdate = true; state.palDirty = false; }
+  updateHover(now);
+  if (now - hudAt > 100) { updateHUD(); hudAt = now; }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+camera.position.copy(camPos); camera.lookAt(camTgt);
+resize(); updateHUD();
+requestAnimationFrame(t => { last = t; frame(t); });
+window.__studioReady = true;
+$('boot').classList.add('gone');
+setTimeout(() => $('boot').remove(), 900);
+
+// test hook: run the studio forward without waiting
+window.__studio = {
+  state, setSpeed, setPaused, setAuto, restart, REF, paintCv, get seg() { return seg; },
+  toPass(p) { let n = 0; while (state.pass < p && !state.finished && n++ < 400) simAdvance(30); return [state.pass, state.strokes]; },
+  advance(sec) { simAdvance(sec); state.paintDirty = state.palDirty = true; paintTex.needsUpdate = heightTex.needsUpdate = palTex.needsUpdate = true; },
+  shot(name) { forcedShot = name; if (!name) return; tipSmooth.copy(tipOf(livePose())); auto = true; shot = want = name; shotAge = wantAge = 99; const [p, t, f] = SHOTS[name](); camPos.copy(p); camTgt.copy(t); camFov = f; },
+};
+</script>
+</body>
+</html>
