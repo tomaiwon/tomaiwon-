@@ -21,9 +21,11 @@
   --hover:rgba(255,255,255,.07);
   --on:rgba(255,255,255,.12);
   --teal:#3ad6b5;
+  --warn:#f0a35e;
   --ui:"Figtree",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
   font:13px/1.35 var(--ui);-webkit-font-smoothing:antialiased}
 #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
@@ -76,6 +78,29 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
 .toast{bottom:calc(56px + env(safe-area-inset-bottom,0px));left:calc(16px + env(safe-area-inset-left,0px));
   background:var(--glass-strong);border:1px solid var(--line);border-radius:6px;padding:7px 10px;
   font-size:11px;color:var(--mute);max-width:min(340px,calc(100vw - 32px))}
+.ask{top:calc(14px + env(safe-area-inset-top,0px));right:calc(16px + env(safe-area-inset-right,0px));width:330px;
+  pointer-events:auto;background:var(--glass-strong);border:1px solid var(--line);border-radius:8px;padding:10px 10px 9px;
+  display:grid;gap:7px}
+.ask .k{font-size:10px;color:var(--mute);letter-spacing:.01em}
+.ask .row{display:flex;gap:6px}
+.ask input[type=text]{flex:1;min-width:0;appearance:none;background:var(--hover);border:1px solid var(--line);border-radius:5px;
+  color:var(--ink);font:400 12.5px var(--ui);padding:0 9px;height:30px}
+.ask input[type=text]::placeholder{color:var(--dim)}
+.ask input[type=text]:focus-visible{outline:2px solid var(--teal);outline-offset:0}
+.ask input[type=text]:disabled{opacity:.6}
+.ask .go{appearance:none;border:0;border-radius:5px;background:var(--teal);color:var(--bg);font:600 12px var(--ui);
+  height:30px;padding:0 13px;cursor:pointer;white-space:nowrap}
+.ask .go:hover{filter:brightness(1.08)}
+.ask .go.stop{background:var(--on);color:var(--ink)}
+.ask .go:focus-visible,.ask .photo:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+.ask .foot{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--mute);min-height:16px}
+.ask .note{flex:1;min-width:0}
+.ask .note.err{color:var(--warn)}
+.ask .photo{appearance:none;background:none;border:0;padding:0;font:inherit;color:var(--mute);text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap;border-radius:3px}
+.ask .photo:hover{color:var(--ink)}
+.ask .ref{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--mute)}
+.ask .ref img{width:64px;height:48px;border-radius:3px;border:1px solid var(--line);object-fit:cover;flex:none}
+.ask .ref b{color:var(--ink);font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #boot{position:fixed;inset:0;display:grid;place-items:center;color:var(--mute);font-size:13px;z-index:5;
   background:var(--bg);transition:opacity .7s;padding:0 24px;text-align:center}
 #boot.gone{opacity:0;pointer-events:none}
@@ -90,6 +115,8 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
   .panel .st{margin-bottom:6px}
   .bar .status{min-width:0}
   .toast{bottom:calc(220px + env(safe-area-inset-bottom,0px))}
+  .ask{top:calc(118px + env(safe-area-inset-top,0px));left:calc(16px + env(safe-area-inset-left,0px));width:auto;padding:8px}
+  .ask .k{display:none}
 }
 @media (max-width:380px){.bar .status{display:none}}
 @media (prefers-reduced-motion:reduce){#boot{transition:none}}
@@ -129,6 +156,15 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
   <span class="status" id="vStatus" aria-live="polite">Changing tool</span>
 </div>
 
+<form class="hud ask" id="ask" autocomplete="off">
+  <label class="k" for="askText" id="askLabel">Paint something else</label>
+  <div class="row" id="askRow" hidden>
+    <input type="text" id="askText" maxlength="300" placeholder="Describe a scene for the robot to paint" enterkeyhint="go">
+    <button type="submit" class="go" id="askGo">Paint</button>
+  </div>
+  <div class="foot"><span class="note" id="askNote" aria-live="polite">Pick a photo and the robot will paint it.</span><button type="button" class="photo" id="askPhotoBtn">Use a photo</button><input type="file" id="askPhoto" accept="image/*" hidden></div>
+  <div class="ref" id="askRef" hidden><img id="askRefImg" alt="Reference picture the robot is painting"><span><span>Painting</span><b id="askRefTitle"></b></span></div>
+</form>
 <aside class="hud panel" id="panel"></aside>
 <div class="ring" id="ring" hidden></div>
 <div class="hud toast" id="toast" hidden>Free camera: drag to orbit, scroll to zoom. Double-click or press the camera button to hand control back.</div>
@@ -396,31 +432,61 @@ function boxBlur(src, w, h, r) {
   return a;
 }
 
-const REF = (() => {
-  const { c, g, rc, gc } = buildReference();
-  const d = c.getImageData(0, 0, RW, RH).data, rd = g.getImageData(0, 0, RW, RH).data;
-  const base = new Float32Array(RW * RH * 3), region = new Uint8Array(RW * RH);
-  for (let i = 0; i < RW * RH; i++) {
-    base[i * 3] = d[i * 4]; base[i * 3 + 1] = d[i * 4 + 1]; base[i * 3 + 2] = d[i * 4 + 2];
-    region[i] = Math.min(5, Math.round(rd[i * 4] / 40));
-  }
+// Analyse a 640×480 picture into what the planner needs: blurred levels, Lab at the analysis grid,
+// edges, regions, and (for any picture but the built-in one) a stroke-direction field from its own edges.
+function analyseReference(cv, region, opts) {
+  const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, RW, RH).data;
+  const base = new Float32Array(RW * RH * 3);
+  for (let i = 0; i < RW * RH; i++) { base[i * 3] = d[i * 4]; base[i * 3 + 1] = d[i * 4 + 1]; base[i * 3 + 2] = d[i * 4 + 2]; }
   const levels = [8, 5, 3, 1].map(r => boxBlur(base, RW, RH, r));
   const lowLab = levels.map(lv => {
     const out = new Float32Array(LW * LH * 3);
     for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
       const rx = ((x + .5) * RW / LW) | 0, ry = ((y + .5) * RH / LH) | 0, k = (ry * RW + rx) * 3;
-      const L = srgb2lab(lv[k], lv[k + 1], lv[k + 2]); out.set(L, (y * LW + x) * 3);
+      out.set(srgb2lab(lv[k], lv[k + 1], lv[k + 2]), (y * LW + x) * 3);
     }
     return out;
   });
   const regionLow = new Uint8Array(LW * LH), edge = new Float32Array(LW * LH);
+  const at = (L, xx, yy) => L[(clamp(yy, 0, LH - 1) * LW + clamp(xx, 0, LW - 1)) * 3];
   for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
     regionLow[y * LW + x] = region[(((y + .5) * RH / LH) | 0) * RW + (((x + .5) * RW / LW) | 0)];
-    const L = lowLab[3], at = (xx, yy) => L[(clamp(yy, 0, LH - 1) * LW + clamp(xx, 0, LW - 1)) * 3];
-    edge[y * LW + x] = clamp(Math.hypot(at(x + 1, y) - at(x - 1, y), at(x, y + 1) - at(x, y - 1)) / 30, 0, 2);
+    edge[y * LW + x] = clamp(Math.hypot(at(lowLab[3], x + 1, y) - at(lowLab[3], x - 1, y), at(lowLab[3], x, y + 1) - at(lowLab[3], x, y - 1)) / 30, 0, 2);
   }
-  return { levels, lowLab, region, regionLow, edge, canvas: rc, regionCanvas: gc };
+  let field = null;
+  if (opts.generic) { // structure tensor: strokes run along edges, drift gently where the picture is flat
+    const J = new Float32Array(LW * LH * 3), L2 = lowLab[2];
+    for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+      const gx = at(L2, x + 1, y) - at(L2, x - 1, y), gy = at(L2, x, y + 1) - at(L2, x, y - 1), i = (y * LW + x) * 3;
+      J[i] = gx * gx; J[i + 1] = gx * gy; J[i + 2] = gy * gy;
+    }
+    const Js = boxBlur(J, LW, LH, 3);
+    field = new Float32Array(LW * LH);
+    for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+      const i = y * LW + x, a = Js[i * 3], b = Js[i * 3 + 1], c = Js[i * 3 + 2];
+      const along = .5 * Math.atan2(2 * b, a - c) + Math.PI / 2, coh = Math.hypot(a - c, 2 * b), w = coh / (coh + 60);
+      const u = x / LW, v = y / LH, drift = .14 * Math.sin(u * 7.5 + v * 4) + .16 * Math.sin(u * 2.7 - v * 8 + 1.3);
+      field[i] = drift + wrapHalf(along - drift) * w;
+    }
+  }
+  return { levels, lowLab, region, regionLow, edge, field, canvas: cv, title: opts.title, fence: !!opts.fence };
+}
+let REF = (() => {
+  const { rc, gc } = buildReference();
+  const rd = gc.getContext('2d').getImageData(0, 0, RW, RH).data, region = new Uint8Array(RW * RH);
+  for (let i = 0; i < RW * RH; i++) region[i] = Math.min(5, Math.round(rd[i * 4] / 40));
+  return analyseReference(rc, region, { title: 'The Gale Light', fence: true });
 })();
+// Any picture (Claude's sketch or a photo) as a reference; focus = [[x, y, w, h], ...] in 640×480 that deserve fine brushwork.
+function referenceFrom(cv, title, focus = []) {
+  const region = new Uint8Array(RW * RH);
+  for (const f of focus.slice(0, 3)) {
+    const [x, y, w, h] = f.map(Number);
+    if (![x, y, w, h].every(Number.isFinite)) continue;
+    for (let yy = clamp(y | 0, 0, RH); yy < clamp((y + h) | 0, 0, RH); yy++) region.fill(R_TOWER, yy * RW + clamp(x | 0, 0, RW), yy * RW + clamp((x + w) | 0, 0, RW));
+  }
+  return analyseReference(cv, region, { title, generic: true });
+}
 
 function sampleRef(level, x, y) { // paint px -> sRGB
   const rx = clamp((x * RW / PW) | 0, 0, RW - 1), ry = clamp((y * RH / PH) | 0, 0, RH - 1), k = (ry * RW + rx) * 3;
@@ -432,6 +498,7 @@ const regionAt = (x, y) => REF.region[clamp((y * RH / PH) | 0, 0, RH - 1) * RW +
 // Direction field: which way strokes run in each part of the picture.
 const wrapHalf = a => ((a + Math.PI / 2) % Math.PI + Math.PI) % Math.PI - Math.PI / 2;
 function fieldAngle(u, v, reg) {
+  if (REF.field) return REF.field[clamp((v * LH) | 0, 0, LH - 1) * LW + clamp((u * LW) | 0, 0, LW - 1)];
   switch (reg) {
     case R_TOWER: return Math.PI / 2 + .05 * Math.sin(v * 40);
     case R_SEA: return .03 * Math.sin(u * 17 + v * 31) + (v > .8 ? .04 * Math.sin(u * 9) : 0);
@@ -527,7 +594,7 @@ function resample(raw, ds) {
 const edgeMargin = P => Math.max(P.width * .6, HEAD[P.tool].hx * PXM + 8);
 function buildStroke(x, y, P, R) {
   const m = edgeMargin(P);
-  const lab0 = srgb2lab(...sampleRef(P.level, x, y)), inTower = regionAt(x, y) === R_TOWER, fence = P !== PASSES[0];
+  const lab0 = srgb2lab(...sampleRef(P.level, x, y)), inTower = regionAt(x, y) === R_TOWER, fence = REF.fence && P !== PASSES[0];
   const len = lerp(P.len[0], P.len[1], R()), jit = gauss() * P.jitter;
   const step = Math.max(3, P.width * .16);
   const march = sign => {
@@ -1439,14 +1506,15 @@ function simAdvance(budget, deadline = Infinity) {
 }
 const livePose = () => seg ? seg.pose(seg.dur > 0 ? seg.t / seg.dur : 1) : cur.pose;
 
-function restart() {
+// A fresh canvas: same or new reference. The robot keeps whatever it holds and carries on from where it is.
+function restart(ref) {
+  if (ref) REF = ref;
   rnd = mulberry32((Math.random() * 2 ** 31) | 0);
   primeCanvas(); primePalette();
   blobMeshes.forEach(m => m.scale.copy(m.userData.base));
   Object.assign(state, { status: 'Changing tool', phase: 'tool', pass: 0, passDone: 0, passTotal: PASSES[0].quota, strokes: 0, colours: 0, ml: 0, time: 0,
-    load: 0, dirty: false, mixing: null, current: null, prevRGB: null, finished: false, spotNext: 0, paintDirty: true, palDirty: true, at: 'rest' });
+    load: 0, dirty: !!state.tool, mixing: null, current: null, prevRGB: null, finished: false, spotNext: 0, paintDirty: true, palDirty: true, at: 'air' });
   state.pig.fill(0);
-  TOOL_ORDER.forEach(rackTool); state.tool = null;
   cur.pose = poseClone(livePose()); script = studio(); seg = null;
 }
 primeCanvas();
@@ -1465,14 +1533,15 @@ const row = (k, v) => `<div class="row"><span>${k}</span><b>${v}</b></div>`;
 const prog = f => `<div class="prog"><i style="width:${(clamp(f, 0, 1) * 100).toFixed(1)}%"></i></div>`;
 const swatch = rgb => `<div class="sw" style="background:${rgbStr(rgb)}"></div>`;
 const recipe = r => r.parts.map(p => `<div class="rc"><i style="background:${PIG[p.i].hex}"></i>${PIG[p.i].name}<b>${p.pct}%</b></div>`).join('');
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let speed = 1, paused = false;
 function panelHTML() {
   const s = state, P = PASSES[s.pass], passLine = `${P.name}, pass ${s.pass + 1} of ${PASSES.length}`;
-  if (s.finished) return `<h2>The Gale Light</h2><div class="st">${CHECK}Finished, still wet</div>${row('Strokes laid', fmtInt(s.strokes))}${row('This pass', `${fmtInt(s.passDone)} of ${fmtInt(s.passTotal)}`)}${prog(1)}<button type="button" class="again" id="again">Start a new canvas</button>`;
-  if (s.hoverMM != null) return `<h2>The Gale Light</h2><div class="st">${STAR}${passLine}</div>${row('Strokes laid', fmtInt(s.strokes))}${row('Paint thickness here', s.hoverMM.toFixed(1) + ' mm')}${prog(s.hoverMM / 2.5)}`;
+  if (s.finished) return `<h2>${esc(REF.title)}</h2><div class="st">${CHECK}Finished, still wet</div>${row('Strokes laid', fmtInt(s.strokes))}${row('This pass', `${fmtInt(s.passDone)} of ${fmtInt(s.passTotal)}`)}${prog(1)}<button type="button" class="again" id="again">Start a new canvas</button>`;
+  if (s.hoverMM != null) return `<h2>${esc(REF.title)}</h2><div class="st">${STAR}${passLine}</div>${row('Strokes laid', fmtInt(s.strokes))}${row('Paint thickness here', s.hoverMM.toFixed(1) + ' mm')}${prog(s.hoverMM / 2.5)}`;
   if (s.phase === 'mix' && s.mixing) return `<h2>Palette</h2><div class="st">${STAR}Mixing this colour now</div>${swatch(s.mixing.rgb)}${recipe(s.mixing.recipe)}${row('Colours mixed', s.colours)}`;
   if (speed === 1) return `<h2>Paint robot</h2><div class="st">${STAR}${s.status}</div>${row('Tool', s.tool ? TOOLS[s.tool].label : 'None')}${row('Strokes laid', fmtInt(s.strokes))}${row('Colours mixed', s.colours)}${s.current ? swatch(s.current.rgb) + recipe(s.current.recipe) : ''}`;
-  return `<h2>The Gale Light</h2><div class="st">${STAR}${passLine}</div>${row('Strokes laid', fmtInt(s.strokes))}${row('This pass', `${fmtInt(s.passDone)} of ${fmtInt(s.passTotal)}`)}${prog(s.passDone / s.passTotal)}`;
+  return `<h2>${esc(REF.title)}</h2><div class="st">${STAR}${passLine}</div>${row('Strokes laid', fmtInt(s.strokes))}${row('This pass', `${fmtInt(s.passDone)} of ${fmtInt(s.passTotal)}`)}${prog(s.passDone / s.passTotal)}`;
 }
 let lastPanel = '';
 function updateHUD() {
@@ -1519,6 +1588,7 @@ controls.addEventListener('start', () => { if (auto) setAuto(false); });
 $('bCam').addEventListener('click', () => setAuto(!auto));
 glCanvas.addEventListener('dblclick', () => setAuto(true));
 addEventListener('keydown', e => {
+  if (e.target.closest?.('input, textarea')) return;
   if (e.target.closest?.('button') && (e.key === ' ' || e.key === 'Enter')) return;
   if (e.key === ' ') { e.preventDefault(); setPaused(!paused); }
   else if ('1234'.includes(e.key) && e.key.length === 1) setSpeed([1, 50, 150, 800][+e.key - 1]);
@@ -1544,6 +1614,122 @@ function updateHover(now) {
   state.hoverMM = Math.max(0, h / 9 - 10) / 255 * 2.5;
   const r = $('ring'); r.hidden = false; r.style.left = mx + 'px'; r.style.top = my + 'px';
 }
+
+// ---------- new paintings: from a description (Claude sketches it first) or from a photo ----------
+const askState = { sample: null, busy: null };
+const note = (text, err = false) => { const n = $('askNote'); n.textContent = text; n.classList.toggle('err', err); };
+const SKETCH = desc => `You compose the reference picture that a robot painter will copy in oil paint, stroke by stroke, on a 4:3 canvas.
+
+The viewer asked for: """${desc}"""
+
+Reply with only one JSON object and no other text:
+{"title": "...", "svg": "<svg ...>...</svg>", "focus": [[x, y, w, h]]}
+
+title: a short painting title, 2 to 5 words, in the language the viewer wrote in.
+
+svg: one complete SVG document.
+- Root element exactly: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+- Cover the whole 640x480 area: start with a full-size background rect (a gradient fill is good).
+- Compose it like a bold, colourful oil painting: large clear shapes, one clear focal subject, strong light and shadow, rich colour, depth (background, middle ground, foreground).
+- Build form in layers, back to front, then add shadow and highlight shapes on top of each object.
+- Allowed elements only: svg, defs, g, rect, circle, ellipse, polygon, polyline, path, line, linearGradient, radialGradient, stop. Attributes such as fill, stroke, stroke-width, opacity, fill-opacity and transform are fine.
+- Not allowed: text, image, filter, mask, clipPath, use, style, script, external references, CSS.
+- About 40 to 150 shapes, under 14000 characters in total.
+
+focus: up to 3 rectangles, in the same 640x480 coordinates, around small important details that need fine brushwork (a face, a boat, a window, a lighthouse). Use [] when there are none.`;
+const ASK_ERRORS = {
+  rate_limited: 'Claude is busy for you right now. Try again in a minute.',
+  refused: 'Claude declined that description. Try describing the scene differently.',
+  invalid_json: "Claude's sketch couldn't be used. Try again, or describe it differently.",
+  empty_completion: "Claude's sketch couldn't be used. Try again, or describe it differently.",
+  bad_svg: "Claude's sketch couldn't be drawn. Try again, or describe it differently.",
+  session_expired: 'Sign in to Claude again, then try once more.',
+  prompt_too_large: 'That description is too long. Shorten it and try again.',
+  upstream_error: "Couldn't reach Claude. Try again.",
+};
+const GONE = ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'];
+
+// Draw Claude's SVG at 640×480. It is shown as an image, so nothing in it can run; strip the risky parts anyway.
+function svgCanvas(svg) {
+  return new Promise((resolve, reject) => {
+    let s = String(svg || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '').replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, '');
+    const m = s.match(/<svg\b[^>]*>/i);
+    if (!m) return reject(new Error('no svg'));
+    s = s.slice(s.indexOf(m[0]));
+    let open = m[0].replace(/\s(width|height|preserveAspectRatio)\s*=\s*("[^"]*"|'[^']*')/gi, '');
+    if (!/xmlns\s*=/.test(open)) open = open.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+    if (!/viewBox\s*=/i.test(open)) open = open.replace(/^<svg/i, '<svg viewBox="0 0 640 480"');
+    open = open.replace(/\/?>$/, ' width="640" height="480" preserveAspectRatio="xMidYMid slice">');
+    s = open + s.slice(m[0].length);
+    const img = new Image();
+    img.onload = () => { const [c, x] = mkCanvas(RW, RH, { willReadFrequently: true }); x.fillStyle = '#7f7f7f'; x.fillRect(0, 0, RW, RH); x.drawImage(img, 0, 0, RW, RH); resolve(c); };
+    img.onerror = () => reject(new Error('svg failed'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+  });
+}
+async function photoCanvas(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const [c, x] = mkCanvas(RW, RH, { willReadFrequently: true });
+    const k = Math.max(RW / img.naturalWidth, RH / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+    x.drawImage(img, (RW - w) / 2, (RH - h) / 2, w, h);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+function startPainting(cv, title, focus) {
+  let ref;
+  try { ref = referenceFrom(cv, title, focus); } catch (e) { note("That picture can't be read. Try another one.", true); return; }
+  restart(ref); lastPanel = '';
+  $('askRefImg').src = cv.toDataURL('image/jpeg', .85); $('askRefTitle').textContent = title; $('askRef').hidden = false;
+  note(`New canvas. The robot is painting “${title}”.`);
+}
+function setBusy(ctl) {
+  askState.busy = ctl;
+  $('askText').disabled = !!ctl;
+  $('askGo').textContent = ctl ? 'Stop' : 'Paint';
+  $('askGo').classList.toggle('stop', !!ctl);
+}
+$('ask').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (askState.busy) { askState.busy.abort(); return; }
+  const desc = $('askText').value.trim();
+  if (!desc || !askState.sample) { $('askText').focus(); return; }
+  const ctl = new AbortController(); setBusy(ctl);
+  note('Claude is sketching the scene…');
+  try {
+    const out = await askState.sample.json(SKETCH(desc), {
+      signal: ctl.signal, cache: false,
+      onText: ({ text }) => note(`Claude is sketching the scene… ${text.length.toLocaleString('en-US')} characters`),
+    });
+    if (!out || typeof out.svg !== 'string') throw { code: 'invalid_json' };
+    const title = typeof out.title === 'string' && out.title.trim() ? out.title.trim().slice(0, 60) : desc.slice(0, 40);
+    const cv = await svgCanvas(out.svg).catch(() => { throw { code: 'bad_svg' }; });
+    startPainting(cv, title, Array.isArray(out.focus) ? out.focus.filter(f => Array.isArray(f) && f.length === 4) : []);
+  } catch (err) {
+    const code = err && err.code;
+    if (code === 'cancelled') note('Stopped. The robot carries on with the current painting.');
+    else if (GONE.includes(code)) { $('askRow').hidden = true; note("Claude isn't available on this page. You can still paint from a photo.", true); }
+    else note(ASK_ERRORS[code] || ASK_ERRORS.upstream_error, true);
+  } finally { setBusy(null); }
+});
+$('askPhotoBtn').addEventListener('click', () => $('askPhoto').click());
+$('askPhoto').addEventListener('change', async () => {
+  const f = $('askPhoto').files && $('askPhoto').files[0];
+  $('askPhoto').value = '';
+  if (!f) return;
+  try { startPainting(await photoCanvas(f), f.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Untitled', []); }
+  catch (e) { note("That file couldn't be opened as a picture. Try a JPEG or PNG.", true); }
+});
+(async () => { // typing a description needs Claude; a copy of this page opened elsewhere still paints photos
+  if (!window.claude || !window.claude.use) return;
+  let sample = null;
+  try { sample = await window.claude.use('sample'); } catch (e) { sample = null; }
+  if (!sample) return;
+  askState.sample = sample;
+  $('askRow').hidden = false;
+  note('Claude sketches the scene, then the robot mixes the colours and paints it.');
+})();
 
 // ---------- camera director ----------
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
