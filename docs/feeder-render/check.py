@@ -2,7 +2,7 @@
 电机三个入口命中 + 悬停加深、窄屏电路板遮罩、四个尺寸截图、控制台报错。
 
   python3 check.py <page.html> <名字> <截图目录>     （需要 Python 版 playwright + Chromium）
-期望：idle ≈19、hover ≈5、drag_100 = 100、wheel 一正一负、logo_gone/back 各差 ~75ms、console 为空
+期望：idle ≈19（设计坐标 px/s）、hover ≈5、drag_100 = 100（屏幕 px）、wheel 一正一负、logo_gone/back 各差 ~75ms、console 为空
 """
 import sys, json, statistics
 from playwright.sync_api import sync_playwright
@@ -39,13 +39,14 @@ with sync_playwright() as p:
     cx, cy = box['x'] + box['width'] / 2, min(box['y'] + 300, 700)
     pg.mouse.move(cx, cy); pg.wait_for_timeout(1800)
     R['hover_px_s'] = speed(pg)
-    # drag 100 screen px (scale is 1 at 1094x720) → strip moves 100
+    # drag 100 screen px → paper moves 100 screen px
     pg.mouse.down(); a = pg.evaluate(TY)
     for i in range(1, 11): pg.mouse.move(cx, cy + i * 10)
     c = pg.evaluate(TY); pg.mouse.up()
     setH = pg.evaluate(SETH); d = c - a
     if d < -setH / 2: d += setH
-    R['drag_100'] = round(d, 1)
+    sc = pg.evaluate("new DOMMatrix(getComputedStyle(document.querySelector('#rig')).transform).a")
+    R['drag_100'] = round(d * sc, 1)      # 屏幕 px：纸跟手 1:1（strip 的位移是设计坐标，乘回机器缩放）
     pg.mouse.move(20, 20); pg.wait_for_timeout(1500)
     # wheel forward / backward
     a = pg.evaluate(TY); pg.mouse.wheel(0, 400); pg.wait_for_timeout(250); c = pg.evaluate(TY)

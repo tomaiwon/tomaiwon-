@@ -50,16 +50,16 @@ front_new = f'''  <!-- ═══ 前层：辊子、轴承、钣金侧架、电�
 
     <!-- 电机罐上三个入口：图案已经刻在渲染图里，这里只留透明热区；悬停时把刻痕压深 -->
     <g id="motor">
-      <a class="ico" href="#" aria-label="社交账号"><title>社交账号</title>
+      <a class="ico" href="https://www.instagram.com/yellwork_/" aria-label="Instagram @yellwork_"><title>Instagram @yellwork_</title>
         <rect x="94" y="236" width="25" height="25" fill="transparent"/>
         <g class="ink" fill="none" stroke-width="2.7" stroke-linecap="round" stroke="transparent" opacity=".6">
           <circle cx="106.5" cy="248.5" r="4.4"/><path d="M110.9 244.5V250.6Q110.9 254 114 254Q117.6 254 117.6 248.5A11.1 11.1 0 1 0 112.6 257.8"/></g>
       </a>
-      <a class="ico" href="mailto:hello@example.com" aria-label="邮件"><title>邮件</title>
+      <a class="ico" href="mailto:yihuangart09@gmail.com" aria-label="邮件 yihuangart09@gmail.com"><title>邮件 yihuangart09@gmail.com</title>
         <rect x="94" y="280" width="25" height="25" fill="transparent"/>
         <rect class="inkf" x="95" y="281" width="23" height="23" rx="2.2" fill="transparent" opacity=".6" mask="url(#mailInk)"/>
       </a>
-      <a class="ico" href="#" aria-label="个人网站"><title>个人网站</title>
+      <a class="ico" href="https://yihuang.art" aria-label="个人网站 yihuang.art"><title>yihuang.art</title>
         <rect x="95" y="322" width="24" height="24" fill="transparent"/>
         <g class="ink" fill="none" stroke-width="2.1" stroke="transparent" opacity=".6">
           <circle cx="106.5" cy="334" r="10.6"/><path d="M98 327.5Q106.5 333 115 327.5M98 340.5Q106.5 335 115 340.5"/><path d="M106.5 323.4Q100.6 334 106.5 344.6M106.5 323.4Q112.4 334 106.5 344.6"/></g>

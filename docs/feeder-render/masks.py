@@ -22,7 +22,7 @@ MASKS = {
   <rect x="99.5" y="287" width="14" height="10.5" rx="1" fill="#000"/>
   <path d="M100 287.8L106.5 293L113 287.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>
   <g font-family="{MONO}" fill="#fff" text-anchor="middle">
-    <text x="323" y="116.6" font-size="12.2" letter-spacing="1.5">DESIGN | CODE | MOTION | SHIP</text>
+    <text x="323" y="116.6" font-size="12.2" letter-spacing="1.5">IMAGE | INSTALLATION | TEXT</text>
     <text transform="translate(467 312) rotate(-90)" font-size="9.6" letter-spacing="1.15">SCROLL TO EXPLORE</text>
   </g>''',
  # copper traces + vias under the solder mask
