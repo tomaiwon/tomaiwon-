@@ -35,7 +35,11 @@ FRONT = [(-90, .035), (-55, .045), (-41, .07), (-31, .10), (-22, .21), (-12, .39
 BACK = [(-90, .07), (-10, .07), (3, .12), (12, .45), (28, .45), (40, .1), (90, .12)]
 SOFTBOX = dict(depth=-500, x0=-1500, x1=2100, ramp=[(-632, .9), (-407, 1.5), (-40, 1.45), (50, 1.05), (100, .75), (140, .45)])
 SIDECARD = dict(x=-700, d0=-700, d1=300, y0=-300, y1=600, strength=0.7)
-ENV = dict(left=0.12, strength=1.0)        # left：左边的环境比右边亮一点（参考里右侧背光）
+KICK = 9.0
+ENV = dict(left=0.12, strength=1.0, hdri=0.35, hdri_rot=40.0)
+# left：左边的环境比右边亮一点（参考里右侧背光）
+# hdri：用 Blender 自带的摄影棚全景（datafiles/studiolights/world/studio.exr）调制上面这张平滑的表，
+#       亮度除以均值、夹在 0.25–2.5，只取 35%——反射里多出幕布、灯架这些真实的明暗结构，平均亮度基本不变
 for kv in filter(None, A.env.split(',')):
     k, v = kv.split('='); ENV[k] = float(v)
 
@@ -94,65 +98,123 @@ def mixc(nt, fac, a, b):
     return sock(m, 'Result_Color', out=True)
 
 
+def _m(nt, op, a, b=None, c=None, clamp=False):
+    n = nt.nodes.new('ShaderNodeMath'); n.operation = op; n.use_clamp = clamp
+    for i, v in enumerate((a, b, c)):
+        if v is None: continue
+        if isinstance(v, (int, float)): n.inputs[i].default_value = v
+        else: link(nt, v, n.inputs[i])
+    return n.outputs[0]
+
+
+def _range(nt, v, a0, a1, b0=0.0, b1=1.0):
+    n = nt.nodes.new('ShaderNodeMapRange'); link(nt, v, n.inputs['Value'])
+    n.inputs['From Min'].default_value = a0; n.inputs['From Max'].default_value = a1
+    n.inputs['To Min'].default_value = b0; n.inputs['To Max'].default_value = b1
+    return n.outputs['Result']
+
+
+def _noise(nt, scale, detail=4.0, rough=0.6, rot=None, seed=0.0):
+    """噪声，坐标 = 世界位置（设计 px）× scale；rot 先绕纵深轴转（划痕用）；seed 平移错开"""
+    N = nt.nodes; src = N.new('ShaderNodeNewGeometry').outputs['Position']
+    if rot is not None:
+        r = N.new('ShaderNodeMapping'); r.inputs['Rotation'].default_value = (0, rot, 0)
+        link(nt, src, r.inputs['Vector']); src = r.outputs['Vector']
+    mp = N.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = scale
+    mp.inputs['Location'].default_value = (seed * 17.1, seed * 5.3, seed * 11.7)
+    link(nt, src, mp.inputs['Vector'])
+    nz = N.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 1.0
+    nz.inputs['Detail'].default_value = detail; nz.inputs['Roughness'].default_value = rough
+    link(nt, mp.outputs['Vector'], nz.inputs['Vector'])
+    return nz.outputs['Fac']
+
+
+def _bump(nt, h, strength, dist, normal, invert=False):
+    b = nt.nodes.new('ShaderNodeBump'); b.invert = invert
+    b.inputs['Strength'].default_value = strength; b.inputs['Distance'].default_value = dist
+    link(nt, h, b.inputs['Height'])
+    if normal: link(nt, normal, b.inputs['Normal'])
+    return b.outputs['Normal']
+
+
+def _ao(nt, dist, inside=False):
+    a = nt.nodes.new('ShaderNodeAmbientOcclusion'); a.samples = 8; a.inside = inside
+    a.inputs['Distance'].default_value = dist
+    return a.outputs['AO']
+
+
+GRAIN = {'x': (0.02, 2.4, 2.4), 'z': (2.4, 2.4, 0.02), 'r': (1.1, 1.1, 1.1)}     # 拉丝方向：沿 x / 竖向 / 不定向的细砂
+
+
 def mat(name, base, metal=0.0, rough=0.4, coat=0.0, coat_rough=0.08, spec=0.5,
-        brush=None, brush_amt=0.0, brush_bump=0.06, engrave=None, eng_dark=0.45, eng_depth=0.55,
-        layers=(), emission=None):
+        grain=None, grain_amt=0.0, grain_bump=0.1, mottle=0.0, mottle_px=20.0, scratch=0.0, grime=0.0, wear=0.0, peel=0.0,
+        engrave=None, eng_dark=0.45, eng_depth=0.55, layers=(), emission=None):
+    """Principled + 一层层表面细节（都是程序纹理，坐标 = 世界位置，单位设计 px）：
+    grain    拉丝：沿方向拉长的细噪声 → 粗糙度、颜色、法线一起变（反射里看得到一道道丝纹）
+    mottle   斑驳：~mottle_px 的低频噪声 → 粗糙度、亮度（手摸过、氧化不均的感觉，反射不再是完美渐变）
+    scratch  细划痕：三个方向拉长噪声的等值线，再用低频噪声挖成零星几段
+    grime    缝里的脏：AO（5px）暗的地方压暗、变粗
+    wear     倒角处磨亮：内侧 AO 找凸边，粗糙度降一点、亮一点
+    peel     塑料的橘皮：细噪声法线"""
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; N = nt.nodes
     bsdf = next(n for n in N if n.type == 'BSDF_PRINCIPLED')
     bsdf.inputs['Metallic'].default_value = metal
-    bsdf.inputs['Roughness'].default_value = rough
     bsdf.inputs['Coat Weight'].default_value = coat
     bsdf.inputs['Coat Roughness'].default_value = coat_rough
     bsdf.inputs['Specular IOR Level'].default_value = spec
-    color = (*base, 1)
-    normal = None; rough_s = None
-    if brush:
-        geo = N.new('ShaderNodeNewGeometry'); mp = N.new('ShaderNodeMapping')
-        mp.inputs['Scale'].default_value = {'x': (0.012, 1.6, 1.6), 'z': (1.6, 1.6, 0.012), 'r': (0.5, 0.5, 0.5)}[brush]
-        link(nt, geo.outputs['Position'], mp.inputs['Vector'])
-        nz = N.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 1.0
-        nz.inputs['Detail'].default_value = 8; nz.inputs['Roughness'].default_value = 0.62
-        link(nt, mp.outputs['Vector'], nz.inputs['Vector'])
-        ma = N.new('ShaderNodeMath'); ma.operation = 'MULTIPLY_ADD'
-        link(nt, nz.outputs['Fac'], ma.inputs[0]); ma.inputs[1].default_value = brush_amt
-        ma.inputs[2].default_value = rough - brush_amt * 0.5
-        rough_s = ma.outputs[0]
-        bp = N.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = brush_bump; bp.inputs['Distance'].default_value = 0.4
-        link(nt, nz.outputs['Fac'], bp.inputs['Height']); normal = bp.outputs['Normal']
-    col_s = None
+    R = rough; K = 1.0; normal = None; col_s = None
+    if grain:
+        g = _noise(nt, GRAIN[grain], detail=8, rough=0.7); c = _range(nt, g, 0.32, 0.68, -1.0, 1.0)   # 噪声集中在 0.5 附近，先拉到 ±1
+        R = _m(nt, 'MULTIPLY_ADD', c, grain_amt, R); K = _m(nt, 'MULTIPLY_ADD', c, grain_amt * 1.2, K)
+        normal = _bump(nt, g, grain_bump, 0.3, normal)
+    if mottle:
+        mo = _noise(nt, (1 / mottle_px,) * 3, detail=4, rough=0.6, seed=1); c = _range(nt, mo, 0.3, 0.7, -1.0, 1.0)
+        R = _m(nt, 'MULTIPLY_ADD', c, mottle, R); K = _m(nt, 'MULTIPLY_ADD', c, mottle * 1.3, K)
+    if peel:
+        normal = _bump(nt, _noise(nt, (1.4,) * 3, detail=2, rough=0.5, seed=2), peel, 0.2, normal)
+    if scratch:
+        lines = None
+        for i, ang in enumerate((0.31, 1.27, 2.23)):
+            n = _noise(nt, (0.011, 1.0, 3.2), detail=2, rough=0.4, rot=ang, seed=3 + i)
+            ln = _range(nt, _m(nt, 'ABSOLUTE', _m(nt, 'SUBTRACT', n, 0.5)), 0.0, 0.02, 1.0, 0.0)
+            lines = ln if lines is None else _m(nt, 'MAXIMUM', lines, ln)
+        sparse = _range(nt, _noise(nt, (1 / 60,) * 3, detail=2, rough=0.5, seed=9), 0.55, 0.66)
+        sc_ = _m(nt, 'MULTIPLY', _m(nt, 'MULTIPLY', lines, sparse), scratch)
+        R = _m(nt, 'MULTIPLY_ADD', sc_, 0.2, R); K = _m(nt, 'MULTIPLY_ADD', sc_, 0.22, K)
+        normal = _bump(nt, sc_, 0.7, 0.25, normal, invert=True)
+    if grime:
+        gr = _m(nt, 'MULTIPLY', _range(nt, _ao(nt, 6.0), 0.45, 1.0, 1.0, 0.0), grime)
+        K = _m(nt, 'MULTIPLY', K, _m(nt, 'MULTIPLY_ADD', gr, -0.7, 1.0)); R = _m(nt, 'MULTIPLY_ADD', gr, 0.3, R)
+    if wear:
+        we = _m(nt, 'MULTIPLY', _range(nt, _ao(nt, 1.5, inside=True), 0.6, 1.0, 1.0, 0.0), wear)
+        R = _m(nt, 'MULTIPLY_ADD', we, -0.16, R); K = _m(nt, 'MULTIPLY_ADD', we, 0.28, K)
     if engrave:
         E = mask(nt, engrave)
-        b2 = N.new('ShaderNodeBump'); b2.invert = True
-        b2.inputs['Strength'].default_value = 1.0; b2.inputs['Distance'].default_value = eng_depth
-        link(nt, E, b2.inputs['Height'])
-        if normal: link(nt, normal, b2.inputs['Normal'])
-        normal = b2.outputs['Normal']
+        normal = _bump(nt, E, 1.0, eng_depth, normal, invert=True)
         col_s = mixc(nt, E, base, tuple(c * eng_dark for c in base))
-        r2 = N.new('ShaderNodeMath'); r2.operation = 'MULTIPLY_ADD'
-        link(nt, E, r2.inputs[0]); r2.inputs[1].default_value = 0.22
-        if rough_s: link(nt, rough_s, r2.inputs[2])
-        else: r2.inputs[2].default_value = rough
-        rough_s = r2.outputs[0]
-    # extra printed / raised layers: (mask, colour, bump_height, rough)
+        R = _m(nt, 'MULTIPLY_ADD', E, 0.22, R)
+    # 印刷 / 凸起层：(遮罩, 颜色, 凸起高度, 粗糙度)
     for lm, lcol, lb, lr in layers:
         E = mask(nt, lm)
         col_s = mixc(nt, E, col_s if col_s else base, lcol)
-        if lb:
-            b3 = N.new('ShaderNodeBump'); b3.inputs['Strength'].default_value = 1.0; b3.inputs['Distance'].default_value = lb
-            link(nt, E, b3.inputs['Height'])
-            if normal: link(nt, normal, b3.inputs['Normal'])
-            normal = b3.outputs['Normal']
+        if lb: normal = _bump(nt, E, 1.0, lb, normal)
         if lr is not None:
-            mr = N.new('ShaderNodeMix'); mr.data_type = 'FLOAT'
-            link(nt, E, mr.inputs[0])
-            if rough_s: link(nt, rough_s, sock(mr, 'A_Float'))
-            else: sock(mr, 'A_Float').default_value = rough
-            sock(mr, 'B_Float').default_value = lr
-            rough_s = sock(mr, 'Result_Float', out=True)
-    if col_s: link(nt, col_s, bsdf.inputs['Base Color'])
-    else: bsdf.inputs['Base Color'].default_value = color
-    if rough_s: link(nt, rough_s, bsdf.inputs['Roughness'])
+            mr = N.new('ShaderNodeMix'); mr.data_type = 'FLOAT'; link(nt, E, mr.inputs[0])
+            if isinstance(R, float): sock(mr, 'A_Float').default_value = R
+            else: link(nt, R, sock(mr, 'A_Float'))
+            sock(mr, 'B_Float').default_value = lr; R = sock(mr, 'Result_Float', out=True)
+    if isinstance(K, float) and col_s is None:
+        bsdf.inputs['Base Color'].default_value = (*base, 1)
+    else:
+        sc = N.new('ShaderNodeVectorMath'); sc.operation = 'SCALE'
+        if col_s is None: sc.inputs[0].default_value = base
+        else: link(nt, col_s, sc.inputs[0])
+        if isinstance(K, float): sc.inputs['Scale'].default_value = K
+        else: link(nt, K, sc.inputs['Scale'])
+        link(nt, sc.outputs[0], bsdf.inputs['Base Color'])
+    if isinstance(R, float): bsdf.inputs['Roughness'].default_value = R
+    else: link(nt, _m(nt, 'MAXIMUM', R, 0.03, clamp=True), bsdf.inputs['Roughness'])
     if normal: link(nt, normal, bsdf.inputs['Normal'])
     if emission:
         bsdf.inputs['Emission Color'].default_value = (*emission[0], 1); bsdf.inputs['Emission Strength'].default_value = emission[1]
@@ -160,37 +222,50 @@ def mat(name, base, metal=0.0, rough=0.4, coat=0.0, coat_rough=0.08, spec=0.5,
 
 
 M = {}
-M['motor'] = mat('motor', (0.70, 0.70, 0.685), metal=1, rough=0.38, brush='r', brush_amt=0.07, engrave='engrave', eng_dark=0.25, eng_depth=0.7)
-M['roller'] = mat('roller', (0.70, 0.70, 0.684), metal=1, rough=0.4, brush='x', brush_amt=0.10, brush_bump=0.1, engrave='engrave', eng_dark=0.5, eng_depth=0.45)
-M['bearing'] = mat('bearing', (0.63, 0.63, 0.62), metal=1, rough=0.10, brush='x', brush_amt=0.04, brush_bump=0.02)
-M['frame'] = mat('frame', (0.28, 0.282, 0.275), metal=1, rough=0.42, brush='z', brush_amt=0.12, brush_bump=0.12, engrave='engrave', eng_dark=0.4, eng_depth=0.4)
+# 金属：底色 = 反射率（F0），粗糙度按参考逐列亮度标过（docs/FEEDER.md 第 6 节）；后面几项是表面细节
+M['motor'] = mat('motor', (0.70, 0.70, 0.685), metal=1, rough=0.38, grain='x', grain_amt=0.07, grain_bump=0.14,
+                 mottle=0.045, mottle_px=16, scratch=0.35, grime=0.7, wear=0.5, engrave='engrave', eng_dark=0.25, eng_depth=1.1)
+M['roller'] = mat('roller', (0.70, 0.70, 0.684), metal=1, rough=0.4, grain='x', grain_amt=0.1, grain_bump=0.18,
+                  mottle=0.03, mottle_px=14, scratch=0.25, grime=0.6, engrave='engrave', eng_dark=0.5, eng_depth=0.6)
+M['bearing'] = mat('bearing', (0.63, 0.63, 0.62), metal=1, rough=0.10, grain='x', grain_amt=0.015, grain_bump=0.03,
+                   mottle=0.015, mottle_px=12, scratch=0.12, grime=0.4, wear=0.3)
+M['frame'] = mat('frame', (0.31, 0.312, 0.305), metal=1, rough=0.42, grain='z', grain_amt=0.1, grain_bump=0.16,
+                 mottle=0.1, mottle_px=24, scratch=0.5, grime=0.8, wear=0.7, engrave='engrave', eng_dark=0.4, eng_depth=0.6)
 # 右侧架背光（参考：左板 ~116、右板 ~104）
-M['frameR'] = mat('frameR', (0.245, 0.247, 0.24), metal=1, rough=0.42, brush='z', brush_amt=0.12, brush_bump=0.12, engrave='engrave', eng_dark=0.4, eng_depth=0.4)
-M['wall'] = mat('wall', (0.5, 0.5, 0.49), metal=1, rough=0.3, brush='z', brush_amt=0.1, brush_bump=0.1)
-M['steel'] = mat('steel', (0.62, 0.62, 0.61), metal=1, rough=0.2, engrave='engrave', eng_dark=0.3)
-M['darkmetal'] = mat('darkmetal', (0.07, 0.07, 0.068), metal=1, rough=0.38)
+M['frameR'] = mat('frameR', (0.262, 0.264, 0.257), metal=1, rough=0.42, grain='z', grain_amt=0.1, grain_bump=0.16,
+                  mottle=0.1, mottle_px=24, scratch=0.5, grime=0.8, wear=0.7, engrave='engrave', eng_dark=0.4, eng_depth=0.6)
+M['wall'] = mat('wall', (0.55, 0.55, 0.54), metal=1, rough=0.3, grain='z', grain_amt=0.09, grain_bump=0.14,
+                mottle=0.05, mottle_px=18, scratch=0.35, grime=0.6, wear=0.8)
+M['steel'] = mat('steel', (0.62, 0.62, 0.61), metal=1, rough=0.22, grain='r', grain_amt=0.05, grain_bump=0.08,
+                 mottle=0.06, scratch=0.4, grime=0.7, wear=0.5, engrave='engrave', eng_dark=0.3, eng_depth=0.8)
+M['darkmetal'] = mat('darkmetal', (0.07, 0.07, 0.068), metal=1, rough=0.38, mottle=0.1, grime=0.5)
 M['interior'] = mat('interior', (0.03, 0.03, 0.028), rough=0.7)
-M['backplate'] = mat('backplate', (0.62, 0.61, 0.6), rough=0.85)
-M['guide'] = mat('guide', (0.018, 0.018, 0.017), rough=0.55)
+M['backplate'] = mat('backplate', (0.62, 0.61, 0.6), rough=0.85, mottle=0.06, grime=0.6)
+M['guide'] = mat('guide', (0.018, 0.018, 0.017), rough=0.55, peel=0.1)
 M['paper'] = mat('paper', (0.0, 0.0, 0.0), rough=0.9, spec=0.0, emission=((1.0, 0.995, 0.985), 0.40))   # 两面一样亮的反光板
-M['pcb'] = mat('pcb', (0.004, 0.21, 0.175), rough=0.45, spec=0.25, coat=0.05, coat_rough=0.2,
+M['pcb'] = mat('pcb', (0.004, 0.21, 0.175), rough=0.45, spec=0.25, coat=0.12, coat_rough=0.25, mottle=0.12, mottle_px=9, peel=0.15, grime=0.7,
                layers=(('traces', (0.03, 0.14, 0.125), 0.35, None), ('silk', (0.82, 0.84, 0.82), 0.12, 0.6)))
-M['epoxy'] = mat('epoxy', (0.014, 0.014, 0.014), rough=0.5, spec=0.4)
-M['blackplastic'] = mat('blackplastic', (0.012, 0.012, 0.012), rough=0.42)
-M['tin'] = mat('tin', (0.78, 0.78, 0.76), metal=1, rough=0.22)
-M['alu'] = mat('alu', (0.78, 0.78, 0.77), metal=1, rough=0.2, brush='r', brush_amt=0.05,
+M['epoxy'] = mat('epoxy', (0.014, 0.014, 0.014), rough=0.55, spec=0.4, mottle=0.08, peel=0.25)
+M['blackplastic'] = mat('blackplastic', (0.012, 0.012, 0.012), rough=0.42, mottle=0.08, peel=0.15, grime=0.4)
+M['sleeve'] = mat('sleeve', (0.03, 0.032, 0.035), rough=0.3, coat=0.4, coat_rough=0.15, mottle=0.06, peel=0.1)
+# 电源座：亮面黑塑料（参考里有明显高光）
+M['jackplastic'] = mat('jackplastic', (0.01, 0.01, 0.01), rough=0.2, coat=0.5, coat_rough=0.12, mottle=0.06, peel=0.12, scratch=0.4)
+M['tin'] = mat('tin', (0.78, 0.78, 0.76), metal=1, rough=0.25, mottle=0.08, grain='r', grain_amt=0.05)
+# 电解电容顶：拉丝铝，灰而不是白
+M['alu'] = mat('alu', (0.6, 0.6, 0.59), metal=1, rough=0.36, grain='r', grain_amt=0.08, grain_bump=0.12, mottle=0.08, mottle_px=6, grime=0.4,
                layers=(('capprint', (0.06, 0.06, 0.058), 0.0, 0.5),))
-M['ceramic'] = mat('ceramic', (0.75, 0.74, 0.7), rough=0.5)
-M['smdgray'] = mat('smdgray', (0.5, 0.5, 0.48), rough=0.45)
-M['crystal'] = mat('crystal', (0.035, 0.022, 0.016), rough=0.4)
-M['rubber'] = mat('rubber', (0.012, 0.012, 0.012), rough=0.36, coat=0.25, coat_rough=0.25)
-M['wire_gray'] = mat('wire_gray', (0.085, 0.085, 0.082), rough=0.3, coat=0.9, coat_rough=0.08)
-M['wire_dgray'] = mat('wire_dgray', (0.035, 0.035, 0.034), rough=0.3, coat=0.9, coat_rough=0.08)
-M['wire_lgray'] = mat('wire_lgray', (0.14, 0.14, 0.135), rough=0.3, coat=0.9, coat_rough=0.08)
-M['wire_red'] = mat('wire_red', (0.62, 0.03, 0.02), rough=0.3, coat=0.9, coat_rough=0.08)
-M['wire_black'] = mat('wire_black', (0.01, 0.01, 0.01), rough=0.3, coat=0.9, coat_rough=0.08)
-M['terminal'] = mat('terminal', (0.72, 0.72, 0.69), rough=0.45)
-M['grommet'] = mat('grommet', (0.07, 0.07, 0.068), rough=0.55)
+M['ceramic'] = mat('ceramic', (0.75, 0.74, 0.7), rough=0.5, mottle=0.08, grime=0.4)
+M['smdgray'] = mat('smdgray', (0.5, 0.5, 0.48), rough=0.45, mottle=0.08, grime=0.4)
+M['crystal'] = mat('crystal', (0.035, 0.022, 0.016), rough=0.4, mottle=0.08)
+M['rubber'] = mat('rubber', (0.012, 0.012, 0.012), rough=0.36, coat=0.25, coat_rough=0.25, mottle=0.08, peel=0.2)
+WIRE = dict(rough=0.32, coat=1.0, coat_rough=0.12, mottle=0.06, peel=0.1, grime=1.0)     # 亮面 PVC；grime 让挨着的线互相压暗，一根根分得开
+M['wire_gray'] = mat('wire_gray', (0.11, 0.11, 0.106), **WIRE)
+M['wire_dgray'] = mat('wire_dgray', (0.05, 0.05, 0.048), **WIRE)
+M['wire_lgray'] = mat('wire_lgray', (0.18, 0.18, 0.174), **WIRE)
+M['wire_red'] = mat('wire_red', (0.62, 0.03, 0.02), **WIRE)
+M['wire_black'] = mat('wire_black', (0.01, 0.01, 0.01), **WIRE)
+M['terminal'] = mat('terminal', (0.72, 0.72, 0.69), rough=0.45, mottle=0.08, grime=0.6)
+M['grommet'] = mat('grommet', (0.07, 0.07, 0.068), rough=0.55, mottle=0.08, peel=0.2)
 
 
 # ───────────────────────── geometry helpers ─────────────────────────
@@ -403,13 +478,20 @@ for j, (x0, n) in enumerate(((292, 8), (388, 6))):
     slab(f'hdr{j}', [rrect(x0, 64, x0 + w, 77.5, 1.2)] + holes, PF - 11, PF - 2, bevel=0.6, m=M['blackplastic'])
     slab(f'hdrBack{j}', [rrect(x0 + 1, 65, x0 + w - 1, 76.5, 0.5)], PF - 2.2, PF, m=M['blackplastic'])
 # 电源座 + 金属套 + 小针
-slab('jack', [rrect(167, 20, 229, 64, 3.0)], PF - 40, PF, bevel=3.0, m=M['blackplastic'])
+# 电源座：横放的黑色圆筒（参考里是一条横向高光）+ 前面一块方端面
+lathe('jack', [(177, 0), (177, 18.5)] + [(177 + 3.5 - 3.5 * math.cos(math.radians(t)), 18.5 + 3.5 * math.sin(math.radians(t))) for t in range(15, 91, 15)]
+      + [(225.5, 22)] + [(225.5 + 3.5 * math.sin(math.radians(t)), 18.5 + 3.5 * math.cos(math.radians(t))) for t in range(15, 91, 15)] + [(229, 0)],
+      (42, PF - 22), segs=128, m=M['jackplastic'])
+slab('jackFace', [rrect(167, 20, 178.5, 64, 2.5)], PF - 43, PF, bevel=2.0, m=M['blackplastic'])
 lathe('jackRing', [(229, 0), (229, 16.2), (229.6, 17), (234.4, 17), (235, 16.2), (235, 0)], (42, PF - 20), segs=96, m=M['steel'])
 slab('jackPin', [rrect(235, 37, 242, 43, 1)], PF - 23, PF - 17, bevel=1, m=M['tin'])
 # 电解电容（俯视）
 for nm, cx in (('capA', 255), ('capB', 285)):
-    prof = [(PF + 0.5, 0), (PF + 0.5, 14), (PF - 26, 14)] + [(PF - 26 - 2.4 * math.sin(math.radians(t)), 11.6 + 2.4 * math.cos(math.radians(t))) for t in range(10, 91, 10)] + [(PF - 28.4, 0)]
-    lathe(nm, prof, (cx, 40), axis='Y', segs=128, m=M['alu'], sharp=40)
+    # 套管：黑色热缩膜，顶上卷边包住铝壳边缘（参考里电容顶是灰铝 + 一圈深色边）
+    prof = [(PF + 0.5, 0), (PF + 0.5, 14), (PF - 25.5, 14)] + [(PF - 25.5 - 1.6 * math.sin(math.radians(t)), 12.4 + 1.6 * math.cos(math.radians(t))) for t in range(15, 181, 15)]
+    prof += [(PF - 25.0, 10.8), (PF - 25.0, 0)]
+    lathe(nm + 'Sleeve', prof, (cx, 40), axis='Y', segs=128, m=M['sleeve'], sharp=50)
+    lathe(nm, [(PF - 25.0, 0), (PF - 25.0, 11.6), (PF - 26.4, 11.4), (PF - 26.6, 10.6), (PF - 26.8, 0)], (cx, 40), axis='Y', segs=128, m=M['alu'], sharp=40)
 lathe('capS', [(PF + 0.5, 0), (PF + 0.5, 6), (PF - 9, 6)] + [(PF - 9 - 1.4 * math.sin(math.radians(t)), 4.6 + 1.4 * math.cos(math.radians(t))) for t in range(15, 91, 15)] + [(PF - 10.4, 0)],
       (214, 70), axis='Y', segs=64, m=M['alu'], sharp=40)
 dome('domeS', 192, 70, 3.6, 3.6, 2.4, PF, M['tin'])
@@ -436,19 +518,19 @@ BUNDLE = [('w4', 'M488 183C512 183 531 212 531 262C531 304 507 330 501 352C496 3
           ('w2', 'M488 171C521 166 543 202 543 253C543 298 525 327 510 350C498 370 511 383 524 402C535 421 522 445 488 453', M['wire_dgray'], 2.7),
           ('w1', 'M488 165C526 158 549 196 549 248C549 300 530 330 513 352C501 368 503 386 520 404C533 419 528 447 488 459', M['wire_gray'], 2.7)]
 for i, (n, d, m, r) in enumerate(BUNDLE):
-    up, lo = 34 - 3.4 * i, 34 - 3.4 * (5 - i)        # 上圈和下圈前后顺序相反 = 绞了一下
-    cable(n, d, r, [up, up, 26, lo, lo], m)
-cable('wT', 'M484 207C488 207 492 207 496 207', 2.7, 18, M['wire_lgray'])
-slab('terminal', [rrect(495, 202, 508, 216, 1.6)], 9, 25, bevel=1.2, m=M['terminal'], col=CABLE)
-slab('termTop', [rrect(495.6, 202.6, 507.4, 206, 1)], 8.2, 9.5, bevel=0.4, m=M['tin'], col=CABLE)
-slab('grommet', [rrect(489, 369, 499, 385, 4)], 14, 30, bevel=2.5, m=M['grommet'], col=CABLE)
+    up, lo = -20 - 2.8 * i, -20 - 2.8 * (5 - i)      # 上圈和下圈前后顺序相反 = 绞了一下
+    cable(n, d, r, [up, up, -27, lo, lo], m)
+cable('wT', 'M484 207C488 207 492 207 496 207', 2.7, -24, M['wire_lgray'])
+slab('terminal', [rrect(495, 202, 508, 216, 1.6)], -32, -16, bevel=1.2, m=M['terminal'], col=CABLE)
+slab('termTop', [rrect(495.6, 202.6, 507.4, 206, 1)], -32.8, -31.5, bevel=0.4, m=M['tin'], col=CABLE)
+slab('grommet', [rrect(489, 369, 499, 385, 4)], -34, -18, bevel=2.5, m=M['grommet'], col=CABLE)
 
 # 纸：只给反光和反射用，相机看不见
 paper = slab('paperProxy', [rrect(194, 115, 450, 760, 0.5)], -51, -50, m=M['paper'], col=HELP)
 paper.visible_camera = False; paper.visible_shadow = False
 
 # ───────────────────────── 灯：柔光箱 + 左侧反光板（相机看不见）─────────────────────────
-def emitter(name, quad, strength=1.0, yramp=None):
+def emitter(name, quad, strength=1.0, yramp=None, xvar=0.0):
     me = bpy.data.meshes.new(name); me.from_pydata([Vector(v) for v in quad], [], [(0, 1, 2, 3)])
     em = bpy.data.materials.new(name); em.use_nodes = True; nt = em.node_tree; N = nt.nodes
     for n in list(N): N.remove(n)
@@ -466,7 +548,13 @@ def emitter(name, quad, strength=1.0, yramp=None):
         for yy, v in yramp[1:]:
             e = el.new((yy - y0) / (y1 - y0)); e.color = (v, v, v, 1)
         sep_ = N.new('ShaderNodeSeparateColor'); link(nt, cr.outputs['Color'], sep_.inputs[0])
-        link(nt, sep_.outputs[0], es.inputs['Strength'])
+        st = sep_.outputs[0]
+        if xvar:      # 柔光箱中间亮、两边暗一点，再加一点布面不匀——反射里不再是一条完美均匀的光带
+            dx = _m(nt, 'DIVIDE', _m(nt, 'SUBTRACT', sp.outputs['X'], 287.5), 1800.0)
+            st = _m(nt, 'MULTIPLY', st, _m(nt, 'MAXIMUM', _m(nt, 'MULTIPLY_ADD', _m(nt, 'MULTIPLY', dx, dx), -xvar, 1.0), 0.0))
+            un = _noise(nt, (1 / 140,) * 3, detail=2, rough=0.5, seed=21)
+            st = _m(nt, 'MULTIPLY', st, _m(nt, 'MULTIPLY_ADD', un, 0.12, 0.94))
+        link(nt, st, es.inputs['Strength'])
     else:
         es.inputs['Strength'].default_value = strength
     me.materials.append(em)
@@ -476,7 +564,13 @@ def emitter(name, quad, strength=1.0, yramp=None):
 
 SB = SOFTBOX
 emitter('softbox', [(SB['x0'], SB['depth'], -SB['ramp'][0][0]), (SB['x1'], SB['depth'], -SB['ramp'][0][0]),
-                    (SB['x1'], SB['depth'], -SB['ramp'][-1][0]), (SB['x0'], SB['depth'], -SB['ramp'][-1][0])], yramp=SB['ramp'])
+                    (SB['x1'], SB['depth'], -SB['ramp'][-1][0]), (SB['x0'], SB['depth'], -SB['ramp'][-1][0])], yramp=SB['ramp'], xvar=0.35)
+# 线缆专用的侧前方补光（方位 −30°、约 30° 宽）：参考里每根线左侧都有一道细亮线。用 Cycles 的灯光链接只照线缆，
+# 金属件反射不到它，前面标定好的明暗不受影响
+_az = math.radians(-30); _c = (287.5 + 1000 * math.sin(_az), -1000 * math.cos(_az)); _t = (math.cos(_az), -math.sin(_az))
+kick = emitter('kicker', [(_c[0] - 260 * _t[0], _c[1] - 260 * _t[1], 200), (_c[0] + 260 * _t[0], _c[1] + 260 * _t[1], 200),
+                          (_c[0] + 260 * _t[0], _c[1] + 260 * _t[1], -800), (_c[0] - 260 * _t[0], _c[1] - 260 * _t[1], -800)], strength=KICK)
+kick.light_linking.receiver_collection = CABLE
 SC_ = SIDECARD
 emitter('sidecard', [(SC_['x'], SC_['d0'], -SC_['y0']), (SC_['x'], SC_['d1'], -SC_['y0']),
                      (SC_['x'], SC_['d1'], -SC_['y1']), (SC_['x'], SC_['d0'], -SC_['y1'])], strength=SC_['strength'])
@@ -515,6 +609,21 @@ lr.inputs['From Min'].default_value = -1; lr.inputs['From Max'].default_value = 
 lr.inputs['To Min'].default_value = 1 + E['left']; lr.inputs['To Max'].default_value = 1 - E['left']
 bg = N.new('ShaderNodeBackground'); link(nt, sock(mixw, 'Result_Color', out=True), bg.inputs['Color'])
 mul = N.new('ShaderNodeMath'); mul.operation = 'MULTIPLY'; link(nt, lr.outputs['Result'], mul.inputs[0]); mul.inputs[1].default_value = E['strength']
+hdri_path = bpy.utils.system_resource('DATAFILES', path='studiolights/world/studio.exr')
+if E['hdri'] and hdri_path and os.path.exists(hdri_path):
+    rot = N.new('ShaderNodeMapping'); rot.inputs['Rotation'].default_value = (0, 0, math.radians(E['hdri_rot']))
+    link(nt, nrm.outputs[0], rot.inputs['Vector'])
+    env = N.new('ShaderNodeTexEnvironment'); env.image = bpy.data.images.load(hdri_path); link(nt, rot.outputs['Vector'], env.inputs['Vector'])
+    bw = N.new('ShaderNodeRGBToBW'); link(nt, env.outputs['Color'], bw.inputs[0])
+    px = env.image.pixels[:]; mean = sum(px[i] + px[i + 1] + px[i + 2] for i in range(0, len(px), 4)) / (len(px) / 4 * 3)
+    rel = N.new('ShaderNodeMapRange'); link(nt, bw.outputs[0], rel.inputs['Value'])
+    rel.inputs['From Min'].default_value = 0; rel.inputs['From Max'].default_value = mean     # → 亮度 / 均值
+    cl = N.new('ShaderNodeMath'); cl.operation = 'MINIMUM'; link(nt, rel.outputs['Result'], cl.inputs[0]); cl.inputs[1].default_value = 2.5
+    cl2 = N.new('ShaderNodeMath'); cl2.operation = 'MAXIMUM'; link(nt, cl.outputs[0], cl2.inputs[0]); cl2.inputs[1].default_value = 0.25
+    mod = N.new('ShaderNodeMath'); mod.operation = 'MULTIPLY_ADD'; link(nt, cl2.outputs[0], mod.inputs[0])
+    mod.inputs[1].default_value = E['hdri']; mod.inputs[2].default_value = 1 - E['hdri']
+    mul2 = N.new('ShaderNodeMath'); mul2.operation = 'MULTIPLY'; link(nt, mul.outputs[0], mul2.inputs[0]); link(nt, mod.outputs[0], mul2.inputs[1])
+    mul = mul2
 link(nt, mul.outputs[0], bg.inputs['Strength'])
 wo = N.new('ShaderNodeOutputWorld'); link(nt, bg.outputs[0], wo.inputs['Surface'])
 
