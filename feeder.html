@@ -57,7 +57,7 @@
   #paper .fog{position:absolute;left:0;right:0;top:0;height:112px;pointer-events:none;
     background:linear-gradient(180deg,rgba(30,27,24,.85) 0,rgba(110,105,100,.6) 3px,rgba(228,226,221,.97) 9px,
       rgba(222,220,216,.88) 30px,rgba(214,212,208,.6) 58px,rgba(210,208,204,.24) 86px,rgba(210,208,204,0) 112px)}
-  #paper .edge{position:absolute;top:0;height:354px;width:9px;pointer-events:none;
+  #paper .edge{position:absolute;top:0;height:343px;width:9px;pointer-events:none;
     -webkit-mask-image:linear-gradient(#000 85%,transparent);mask-image:linear-gradient(#000 85%,transparent)}
   #paper .edge.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.32),rgba(0,0,0,0))}
   #paper .edge.r{right:0;background:linear-gradient(270deg,rgba(0,0,0,.32),rgba(0,0,0,0))}
@@ -249,30 +249,54 @@
 </main>
 
 <div id="rig">
-  <!-- 后层：线缆（被侧板、电机挡住两端） -->
+  <!-- ═══ 后层：线缆。两端都塞进侧板 / 电机后面，所以画在最底下 ═══ -->
   <svg width="575" height="720" viewBox="0 0 575 720" aria-hidden="true">
-    <g fill="none" stroke-linecap="round">
-      <!-- 左上那根粗黑线 -->
-      <path d="M8 -30 C4 70 34 150 96 190 S150 222 160 232" stroke="#151515" stroke-width="11"/>
-      <path d="M6 -30 C2 70 32 148 94 187 S148 219 158 229" stroke="#6d6d6a" stroke-width="2.2" opacity=".55" transform="translate(-2.2,-1.6)"/>
+    <defs>
+      <!-- 一根线 = 深色描边 + 本色 + 左上一道窄高光，读起来才是圆的 -->
+      <path id="wA" d="M4 -30C2 70 40 150 100 196C118 208 136 214 158 216"/>
+      <path id="wBk" d="M117 368C115 410 123 448 158 457"/>
+      <path id="wRd" d="M126 368C125 404 131 436 158 447"/>
+      <path id="w1" d="M488 165C526 158 549 196 549 248C549 300 530 330 513 352C501 368 503 386 520 404C533 419 528 447 488 459"/>
+      <path id="w2" d="M488 171C521 166 543 202 543 253C543 298 525 327 510 350C498 370 511 383 524 402C535 421 522 445 488 453"/>
+      <path id="w3" d="M488 177C516 175 537 207 537 257C537 300 517 333 505 353C496 368 516 383 516 404C516 425 511 441 488 447"/>
+      <path id="w4" d="M488 183C512 183 531 212 531 262C531 304 507 330 501 352C496 370 508 386 512 405C515 421 505 435 488 441"/>
+      <path id="w5" d="M506 216C516 232 520 250 520 270C520 304 510 330 507 352C503 372 525 392 521 412C518 428 507 433 488 436"/>
+      <path id="wR" d="M488 190C514 190 526 206 526 240C526 290 518 322 509 348C501 371 520 389 519 408C518 424 508 432 488 433"/>
+    </defs>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- 左上粗黑线（橡胶皮） -->
+      <use href="#wA" stroke="#0d0d0d" stroke-width="10"/>
+      <use href="#wA" stroke="#363634" stroke-width="3.8" transform="translate(-2.1 -1.6)" opacity=".85"/>
+      <use href="#wA" stroke="#8b8b88" stroke-width="1.1" transform="translate(-2.9 -2.3)" opacity=".55"/>
       <!-- 电机底下红黑两根 -->
-      <path d="M124 360 C120 410 128 444 162 455" stroke="#a3221b" stroke-width="5"/>
-      <path d="M123 360 C119 410 127 443 161 453" stroke="#e0675e" stroke-width="1.2" opacity=".6"/>
-      <path d="M136 360 C134 404 141 432 164 442" stroke="#121212" stroke-width="5"/>
-      <path d="M135 360 C133 404 140 431 163 440" stroke="#7a7a77" stroke-width="1.2" opacity=".6"/>
-      <!-- 右侧一束线，出去绕一圈再回到侧板 -->
-      <path d="M486 166 C540 170 560 228 556 300 S548 440 486 462" stroke="#8d8d8a" stroke-width="5.5"/>
-      <path d="M486 176 C534 182 550 236 547 302 S540 432 486 452" stroke="#676764" stroke-width="5.5"/>
-      <path d="M486 186 C528 194 541 244 538 304 S531 425 486 444" stroke="#262624" stroke-width="5"/>
-      <path d="M486 196 C521 205 532 252 529 306 S522 418 486 436" stroke="#a3221b" stroke-width="4.6"/>
-      <path d="M486 206 C515 216 523 258 520 308 S514 412 486 428" stroke="#9d9d9a" stroke-width="4.6"/>
-      <g stroke="#e9e9e6" stroke-width="1.1" opacity=".55">
-        <path d="M486 164 C540 168 559 226 555 298 S547 438 486 460"/>
-        <path d="M486 174 C534 180 549 234 546 300 S539 430 486 450"/>
-        <path d="M486 204 C515 214 522 256 519 306 S513 410 486 426"/>
+      <use href="#wBk" stroke="#070707" stroke-width="5.6"/><use href="#wBk" stroke="#1d1d1c" stroke-width="4.2"/>
+      <use href="#wBk" stroke="#8e8e8b" stroke-width="1" transform="translate(-.9 -.5)" opacity=".7"/>
+      <use href="#wRd" stroke="#4a0e0a" stroke-width="5.6"/><use href="#wRd" stroke="#b8261d" stroke-width="4.2"/>
+      <use href="#wRd" stroke="#f3968d" stroke-width="1" transform="translate(-.9 -.5)" opacity=".75"/>
+      <!-- 右侧一束：出板 → 大圈 → 绞一下 → 小圈 → 回板 -->
+      <g id="bundle">
+        <use href="#w4" stroke="#101010" stroke-width="5.4"/><use href="#w4" stroke="#5f5f5d" stroke-width="4"/>
+        <use href="#w4" stroke="#c9c9c6" stroke-width=".9" transform="translate(-.7 -.6)" opacity=".55"/>
+        <use href="#w3" stroke="#101010" stroke-width="5.4"/><use href="#w3" stroke="#3c3c3a" stroke-width="4"/>
+        <use href="#w3" stroke="#a9a9a6" stroke-width=".9" transform="translate(-.7 -.6)" opacity=".55"/>
+        <use href="#wR" stroke="#3e0b07" stroke-width="5.2"/><use href="#wR" stroke="#c22a1f" stroke-width="3.8"/>
+        <use href="#wR" stroke="#ff9d93" stroke-width=".9" transform="translate(-.7 -.6)" opacity=".7"/>
+        <use href="#w5" stroke="#101010" stroke-width="5.4"/><use href="#w5" stroke="#6c6c6a" stroke-width="4"/>
+        <use href="#w5" stroke="#d6d6d3" stroke-width=".9" transform="translate(-.7 -.6)" opacity=".55"/>
+        <use href="#w2" stroke="#101010" stroke-width="5.4"/><use href="#w2" stroke="#4b4b49" stroke-width="4"/>
+        <use href="#w2" stroke="#b6b6b3" stroke-width=".9" transform="translate(-.7 -.6)" opacity=".55"/>
+        <use href="#w1" stroke="#101010" stroke-width="5.4"/><use href="#w1" stroke="#575755" stroke-width="4"/>
+        <use href="#w1" stroke="#c4c4c1" stroke-width=".9" transform="translate(-.7 -.6)" opacity=".55"/>
       </g>
-      <path d="M486 194 C521 203 531 250 528 304 S521 416 486 434" stroke="#ec7a70" stroke-width="1.1" opacity=".6"/>
+      <!-- 接线端子：一根灰线从板里出来插进去，下面接回线束 -->
+      <path d="M488 207H496" stroke="#101010" stroke-width="5.4"/><path d="M488 207H496" stroke="#6c6c6a" stroke-width="4"/>
     </g>
+    <rect x="495" y="202" width="13" height="14" rx="1.6" fill="#d9d9d5" stroke="#6f6f6b" stroke-width=".8"/>
+    <rect x="495.6" y="202.6" width="11.8" height="3.4" rx="1" fill="#f4f4f1"/>
+    <path d="M498 210h7M498 213h7" stroke="#9a9a96" stroke-width=".7"/>
+    <!-- 线束回板处的橡胶护套 -->
+    <rect x="489" y="369" width="10" height="16" rx="4" fill="#5b5b58"/>
+    <rect x="490" y="370.5" width="3" height="13" rx="1.5" fill="#a3a3a0" opacity=".7"/>
   </svg>
 
   <div id="paper">
@@ -282,194 +306,303 @@
     <div class="edge l"></div><div class="edge r"></div>
   </div>
 
-  <!-- 前层：侧板、辊子、电机、电路板 -->
+  <!-- ═══ 前层：辊子、轴承、钣金侧架、电机、电路板 ═══ -->
   <svg id="front" width="575" height="720" viewBox="0 0 575 720">
     <defs>
-      <linearGradient id="gRoll" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#2b2c29"/><stop offset=".1" stop-color="#5b5d59"/><stop offset=".27" stop-color="#cbccc7"/>
-        <stop offset=".4" stop-color="#a3a49f"/><stop offset=".64" stop-color="#777873"/><stop offset=".86" stop-color="#3a3732"/>
-        <stop offset="1" stop-color="#13100d"/>
+      <!-- 辊子：拉丝不锈钢管 -->
+      <linearGradient id="gRoll" x1="0" y1="92" x2="0" y2="135" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#2a2a28"/><stop offset=".05" stop-color="#6c6d68"/><stop offset=".15" stop-color="#c2c3be"/>
+        <stop offset=".28" stop-color="#b9bab5"/><stop offset=".52" stop-color="#a3a49f"/><stop offset=".74" stop-color="#7a7b76"/>
+        <stop offset=".9" stop-color="#43423e"/><stop offset="1" stop-color="#151412"/>
       </linearGradient>
-      <linearGradient id="gPulley" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#3c3d3a"/><stop offset=".18" stop-color="#8b8c87"/><stop offset=".36" stop-color="#d6d7d2"/>
-        <stop offset=".55" stop-color="#9c9d98"/><stop offset=".82" stop-color="#5a5b57"/><stop offset="1" stop-color="#262623"/>
+      <!-- 轴承：中间一圈深色、两侧亮边 -->
+      <linearGradient id="gBear" x1="0" y1="73" x2="0" y2="153" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#1c1c1b"/><stop offset=".14" stop-color="#3e3f3c"/><stop offset=".33" stop-color="#6e6f6b"/>
+        <stop offset=".46" stop-color="#585955"/><stop offset=".75" stop-color="#2d2d2b"/><stop offset="1" stop-color="#121211"/>
       </linearGradient>
-      <linearGradient id="gPlateL" x1="0" x2="1">
-        <stop offset="0" stop-color="#a3a49f"/><stop offset=".09" stop-color="#6b6c67"/><stop offset=".2" stop-color="#8c8d88"/>
-        <stop offset=".55" stop-color="#7f807b"/><stop offset=".86" stop-color="#62635e"/><stop offset="1" stop-color="#363633"/>
+      <linearGradient id="gRim" x1="0" y1="73" x2="0" y2="153" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#5d5e5a"/><stop offset=".1" stop-color="#b4b5b0"/><stop offset=".3" stop-color="#f6f6f2"/>
+        <stop offset=".52" stop-color="#cdcec9"/><stop offset=".8" stop-color="#8b8c87"/><stop offset="1" stop-color="#454643"/>
       </linearGradient>
-      <linearGradient id="gPlateR" x1="0" x2="1">
-        <stop offset="0" stop-color="#363633"/><stop offset=".12" stop-color="#666762"/><stop offset=".45" stop-color="#80817c"/>
-        <stop offset=".8" stop-color="#8e8f8a"/><stop offset=".91" stop-color="#6b6c67"/><stop offset="1" stop-color="#a7a8a3"/>
+      <!-- 侧墙（钣金折边）：外沿亮 -->
+      <linearGradient id="gWall" x1="152" y1="0" x2="161" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#5a5b57"/><stop offset=".22" stop-color="#d4d5d0"/><stop offset=".5" stop-color="#a7a8a3"/>
+        <stop offset=".85" stop-color="#7d7e79"/><stop offset="1" stop-color="#4e4f4b"/>
       </linearGradient>
-      <linearGradient id="gTopShade" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".22" stop-color="#000" stop-opacity=".12"/>
-        <stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset=".93" stop-color="#000" stop-opacity="0"/>
-        <stop offset="1" stop-color="#000" stop-opacity=".25"/>
+      <!-- 正面板：靠墙一侧压暗 -->
+      <linearGradient id="gFace" x1="161" y1="0" x2="194" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#4b4c48"/><stop offset=".12" stop-color="#6f706b"/><stop offset=".3" stop-color="#83847f"/>
+        <stop offset=".75" stop-color="#7f807b"/><stop offset=".96" stop-color="#73746f"/><stop offset="1" stop-color="#4a4a47"/>
       </linearGradient>
-      <linearGradient id="gMotor" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#454643"/><stop offset=".12" stop-color="#8a8b86"/><stop offset=".3" stop-color="#bebfba"/>
-        <stop offset=".46" stop-color="#9fa09b"/><stop offset=".78" stop-color="#787974"/><stop offset="1" stop-color="#3a3a37"/>
+      <linearGradient id="gFaceV" x1="0" y1="172" x2="0" y2="471" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#000" stop-opacity=".4"/><stop offset=".04" stop-color="#000" stop-opacity=".06"/>
+        <stop offset=".1" stop-color="#fff" stop-opacity=".09"/><stop offset=".45" stop-color="#fff" stop-opacity=".02"/>
+        <stop offset=".92" stop-color="#000" stop-opacity=".12"/><stop offset="1" stop-color="#000" stop-opacity=".26"/>
       </linearGradient>
-      <linearGradient id="gMotorX" x1="0" x2="1">
-        <stop offset="0" stop-color="#000" stop-opacity=".35"/><stop offset=".18" stop-color="#000" stop-opacity="0"/>
-        <stop offset=".75" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#000" stop-opacity=".25"/>
+      <linearGradient id="gLip" x1="0" y1="470" x2="0" y2="478" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#4a4a47"/><stop offset=".18" stop-color="#d6d7d2"/><stop offset=".55" stop-color="#a3a49f"/><stop offset=".85" stop-color="#6e6f6a"/><stop offset="1" stop-color="#383835"/>
       </linearGradient>
-      <radialGradient id="gCap" cx=".65" cy=".38" r=".8">
-        <stop offset="0" stop-color="#9c9d98"/><stop offset=".6" stop-color="#5d5e5a"/><stop offset="1" stop-color="#2c2c29"/>
+      <linearGradient id="gOpen" x1="0" y1="134" x2="0" y2="149" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#1b1a18"/><stop offset=".25" stop-color="#8f8e8b"/><stop offset=".6" stop-color="#d9d8d5"/><stop offset="1" stop-color="#e8e7e5"/>
+      </linearGradient>
+      <linearGradient id="gRecess" x1="0" y1="149" x2="0" y2="172" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#0b0b0a"/><stop offset=".75" stop-color="#1e1d1b"/><stop offset="1" stop-color="#34332f"/>
+      </linearGradient>
+      <!-- 电机罐：横放的圆柱，上亮下暗 -->
+      <linearGradient id="gMotor" x1="0" y1="222" x2="0" y2="372" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#4a4b48"/><stop offset=".03" stop-color="#8f908b"/><stop offset=".1" stop-color="#c6c7c2"/>
+        <stop offset=".2" stop-color="#b3b4af"/><stop offset=".5" stop-color="#a0a19c"/><stop offset=".8" stop-color="#8a8b86"/>
+        <stop offset=".95" stop-color="#666762"/><stop offset="1" stop-color="#3d3d3a"/>
+      </linearGradient>
+      <linearGradient id="gMotorX" x1="63" y1="0" x2="152" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#000" stop-opacity=".3"/><stop offset=".1" stop-color="#000" stop-opacity=".12"/>
+        <stop offset=".26" stop-color="#000" stop-opacity=".04"/><stop offset=".32" stop-color="#fff" stop-opacity=".13"/>
+        <stop offset=".52" stop-color="#fff" stop-opacity=".06"/><stop offset=".8" stop-color="#000" stop-opacity=".02"/>
+        <stop offset="1" stop-color="#000" stop-opacity=".32"/>
+      </linearGradient>
+      <!-- 小圆柱件（立柱、轴头、螺母） -->
+      <linearGradient id="gStud" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#3b3c39"/><stop offset=".16" stop-color="#9c9d98"/><stop offset=".32" stop-color="#ececE8"/>
+        <stop offset=".5" stop-color="#a9aaa5"/><stop offset=".82" stop-color="#5f605b"/><stop offset="1" stop-color="#2b2b29"/>
+      </linearGradient>
+      <radialGradient id="gStudFace" cx=".38" cy=".3" r=".8">
+        <stop offset="0" stop-color="#f2f2ee"/><stop offset=".45" stop-color="#b4b5b0"/><stop offset="1" stop-color="#585955"/>
       </radialGradient>
-      <radialGradient id="gHole" cx=".5" cy=".4" r=".6">
-        <stop offset="0" stop-color="#050505"/><stop offset=".7" stop-color="#171615"/><stop offset="1" stop-color="#4a4946"/>
+      <radialGradient id="gScrew" cx=".36" cy=".3" r=".78">
+        <stop offset="0" stop-color="#ececE8"/><stop offset=".5" stop-color="#9a9b96"/><stop offset="1" stop-color="#454643"/>
       </radialGradient>
-      <radialGradient id="gScrew" cx=".38" cy=".32" r=".75">
-        <stop offset="0" stop-color="#e2e3de"/><stop offset=".5" stop-color="#8e8f8a"/><stop offset="1" stop-color="#3b3b38"/>
-      </radialGradient>
-      <radialGradient id="gCapa" cx=".4" cy=".35" r=".7">
-        <stop offset="0" stop-color="#f6f6f3"/><stop offset=".55" stop-color="#c4c4bf"/><stop offset="1" stop-color="#7d7d78"/>
-      </radialGradient>
-      <linearGradient id="gPcb" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#1c4a47"/><stop offset=".5" stop-color="#28625e"/><stop offset="1" stop-color="#1f524f"/>
+      <linearGradient id="gHoleRing" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#4b4c48"/><stop offset=".55" stop-color="#a5a6a1"/><stop offset="1" stop-color="#e6e7e2"/>
       </linearGradient>
-      <linearGradient id="gKnob" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#4b4c49"/><stop offset=".3" stop-color="#d0d1cc"/><stop offset=".6" stop-color="#8d8e89"/><stop offset="1" stop-color="#2f2f2c"/>
+      <linearGradient id="gTab" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#d7d8d3"/><stop offset=".5" stop-color="#9c9d98"/><stop offset="1" stop-color="#6c6d68"/>
       </linearGradient>
+      <!-- 电路板 -->
+      <linearGradient id="gPcb" x1="0" y1="-50" x2="0" y2="82" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#1b4b48"/><stop offset=".55" stop-color="#225956"/><stop offset="1" stop-color="#1f5451"/>
+      </linearGradient>
+      <radialGradient id="gCapa" cx=".38" cy=".32" r=".75">
+        <stop offset="0" stop-color="#f9f9f6"/><stop offset=".55" stop-color="#cfcfcb"/><stop offset="1" stop-color="#8d8d89"/>
+      </radialGradient>
+      <linearGradient id="gJack" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2b2b2b"/><stop offset=".12" stop-color="#1a1a1a"/><stop offset=".7" stop-color="#0e0e0e"/><stop offset="1" stop-color="#050505"/>
+      </linearGradient>
+      <linearGradient id="gChip" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1a1a1a"/><stop offset=".8" stop-color="#131313"/><stop offset="1" stop-color="#262626"/>
+      </linearGradient>
+
       <filter id="brush" x="0" y="0" width="100%" height="100%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.85 0.012" numOctaves="2" seed="4"/>
+        <feTurbulence type="fractalNoise" baseFrequency="0.9 0.01" numOctaves="2" seed="4"/>
         <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.6 0 0 0 -.55"/>
         <feComposite in2="SourceGraphic" operator="in"/>
       </filter>
+      <filter id="brushH" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.008 0.9" numOctaves="2" seed="9"/>
+        <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.6 0 0 0 -.55"/>
+        <feComposite in2="SourceGraphic" operator="in"/>
+      </filter>
+      <filter id="etch" x="-5%" y="-30%" width="110%" height="160%"><feGaussianBlur stdDeviation=".28"/></filter>
       <filter id="ledGlow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="2.4"/></filter>
-      <clipPath id="clipPulley"><rect x="118" y="74" width="42" height="78" rx="9"/></clipPath>
+      <clipPath id="clipBear"><rect x="122" y="73" width="21.5" height="80"/></clipPath>
+
+      <!-- 左侧架（墙 + 正面板 + 底唇 + 脚），右边用镜像复用 -->
+      <path id="wallP" d="M156.5 71.5Q161 71.5 161 77.5V470H171.5V476.5L164.8 487.4Q162.8 490.3 159.4 489.7Q152 487.9 152 478V77.5Q152 71.5 156.5 71.5Z"/>
+      <g id="side">
+        <rect x="161" y="134" width="33" height="16" fill="url(#gOpen)"/>
+        <rect x="183" y="136.5" width="11" height="12.5" rx="1" fill="#0c0c0b"/>
+        <rect x="183" y="136.5" width="11" height="1.6" fill="#3a3a38"/>
+        <rect x="161" y="149" width="33" height="23" fill="url(#gRecess)"/>
+        <rect x="161" y="172" width="33" height="298" fill="url(#gFace)"/>
+        <rect x="161" y="172" width="33" height="299" fill="#fff" filter="url(#brush)" opacity=".07"/>
+        <rect x="161" y="172" width="33" height="299" fill="url(#gFaceV)"/>
+        <rect x="161" y="171" width="33" height="2.4" fill="#d3d4cf"/>
+        <rect x="161" y="173.4" width="33" height=".9" fill="#3d3d3a" opacity=".55"/>
+        <rect x="161" y="468.4" width="33" height="1.6" fill="#2d2d2b" opacity=".6"/>
+        <rect x="161" y="470" width="33" height="8" fill="url(#gLip)"/>
+        <path d="M193.4 172V477" stroke="#262624" stroke-width="1.2" opacity=".55"/>
+        <use href="#wallP" fill="url(#gWall)"/>
+        <use href="#wallP" fill="#fff" filter="url(#brush)" opacity=".1"/>
+        <path d="M153.8 79V479" stroke="#f4f4f0" stroke-width=".8" opacity=".55"/>
+        <path d="M160.4 78V471" stroke="#2e2e2b" stroke-width=".9" opacity=".5"/>
+        <use href="#wallP" fill="none" stroke="#262624" stroke-width=".7" opacity=".55"/>
+      </g>
+
+      <g id="screw"><circle r="4.3" fill="url(#gScrew)" stroke="#3a3a37" stroke-width=".6"/>
+        <path d="M-2.1 0H2.1M0-2.1V2.1" stroke="#2c2c2a" stroke-width="1.05" stroke-linecap="round"/></g>
+      <g id="hole">
+        <circle r="8.7" fill="url(#gHoleRing)"/><circle r="8.7" fill="none" stroke="#2f2f2c" stroke-width=".6" opacity=".7"/>
+        <circle r="6.8" fill="#1b1b1a"/><circle cy="1.3" r="6" fill="#5c5c59"/><circle cy="-.5" r="5.6" fill="#0a0a0a"/>
+      </g>
     </defs>
 
-    <!-- 侧板 -->
-    <g>
-      <path d="M160 74H188Q196 74 196 82V482Q196 490 188 490H160Q152 490 152 482V82Q152 74 160 74Z" fill="url(#gPlateL)"/>
-      <path d="M160 74H188Q196 74 196 82V482Q196 490 188 490H160Q152 490 152 482V82Q152 74 160 74Z" fill="#fff" filter="url(#brush)" opacity=".22"/>
-      <path d="M160 74H188Q196 74 196 82V482Q196 490 188 490H160Q152 490 152 482V82Q152 74 160 74Z" fill="url(#gTopShade)"/>
-      <path d="M154 86V480" stroke="#d3d4cf" stroke-width="1" opacity=".55"/>
-      <path d="M456 74H486Q494 74 494 82V482Q494 490 486 490H456Q448 490 448 482V82Q448 74 456 74Z" fill="url(#gPlateR)"/>
-      <path d="M456 74H486Q494 74 494 82V482Q494 490 486 490H456Q448 490 448 482V82Q448 74 456 74Z" fill="#fff" filter="url(#brush)" opacity=".22"/>
-      <path d="M456 74H486Q494 74 494 82V482Q494 490 486 490H456Q448 490 448 482V82Q448 74 456 74Z" fill="url(#gTopShade)"/>
-      <path d="M492 86V480" stroke="#d3d4cf" stroke-width="1" opacity=".5"/>
-      <!-- 孔、螺丝 -->
-      <circle cx="172" cy="418" r="8" fill="url(#gHole)"/><path d="M165 422a8 8 0 0 0 14 0" fill="none" stroke="#c9cac5" stroke-width=".9" opacity=".7"/>
-      <circle cx="472" cy="418" r="8" fill="url(#gHole)"/><path d="M465 422a8 8 0 0 0 14 0" fill="none" stroke="#c9cac5" stroke-width=".9" opacity=".7"/>
-      <g id="screws">
-        <circle cx="164" cy="189" r="4.4" fill="url(#gScrew)"/><path d="M161 189h6" stroke="#2a2a28" stroke-width="1"/>
-        <circle cx="481" cy="189" r="4.4" fill="url(#gScrew)"/><path d="M478 189h6" stroke="#2a2a28" stroke-width="1"/>
-        <circle cx="164" cy="470" r="3.6" fill="url(#gScrew)"/><circle cx="481" cy="470" r="3.6" fill="url(#gScrew)"/>
-        <rect x="474" y="203" width="14" height="13" rx="3" fill="url(#gKnob)"/>
+    <!-- 辊子（两端插进侧墙，墙后画） -->
+    <g id="roller">
+      <rect x="158" y="92" width="334" height="43" fill="url(#gRoll)"/>
+      <rect x="158" y="92" width="334" height="43" fill="#fff" filter="url(#brushH)" opacity=".1"/>
+      <path d="M163.5 92V135M480.5 92V135" stroke="#262624" stroke-width="1.4" opacity=".55"/>
+      <path d="M165.2 92V135M478.8 92V135" stroke="#e6e6e2" stroke-width=".8" opacity=".35"/>
+      <g font-family="'Space Mono','JetBrains Mono','IBM Plex Mono',Menlo,Consolas,monospace" font-size="12.2" letter-spacing="1.5" text-anchor="middle" filter="url(#etch)">
+        <text x="323" y="117.4" fill="#eeeeea" opacity=".34">DESIGN | CODE | MOTION | SHIP</text>
+        <text x="323" y="116.6" fill="#4a4a46" opacity=".78">DESIGN | CODE | MOTION | SHIP</text>
       </g>
-      <!-- 右板竖排刻字 -->
-      <g font-family="'JetBrains Mono',Menlo,Consolas,monospace" font-size="10.5" letter-spacing="1.6" text-anchor="middle">
-        <text transform="translate(474.6 313) rotate(-90)" fill="#c9cac5" opacity=".45">SCROLL TO EXPLORE</text>
-        <text transform="translate(474 312.4) rotate(-90)" fill="#2f2e2b" opacity=".75">SCROLL TO EXPLORE</text>
-      </g>
+      <rect x="161" y="131.5" width="322" height="4" fill="#0a0908" opacity=".9"/>
     </g>
 
-    <!-- 左边那颗小旋钮 -->
-    <rect x="128" y="174" width="26" height="27" rx="3" fill="url(#gKnob)"/>
-    <ellipse cx="129" cy="187.5" rx="4" ry="13.5" fill="#6c6d68"/>
-    <ellipse cx="129" cy="187.5" rx="2" ry="6" fill="#3b3b38"/>
+    <!-- 侧架：左原件 + 右镜像 -->
+    <use href="#side"/>
+    <use href="#side" transform="matrix(-1 0 0 1 644 0)"/>
+
+    <!-- 左端轴承（侧看）：表面刻线随走纸转 -->
+    <g id="bearing">
+      <rect x="105" y="102" width="10" height="19" rx="3.5" fill="url(#gStud)"/>
+      <rect x="105" y="102" width="3" height="19" rx="1.5" fill="#7d7e79" opacity=".6"/>
+      <rect x="113" y="73" width="39.5" height="80" rx="9" fill="url(#gBear)"/>
+      <g clip-path="url(#clipBear)"><g id="knurl" stroke-width=".9"></g></g>
+      <rect x="113" y="73" width="9" height="80" rx="4.5" fill="url(#gRim)"/>
+      <rect x="143.5" y="73" width="9" height="80" rx="4.5" fill="url(#gRim)"/>
+      <path d="M122.1 76V150M143.4 76V150" stroke="#141413" stroke-width=".9" opacity=".7"/>
+      <rect x="113" y="73" width="39.5" height="80" rx="9" fill="none" stroke="#1a1a19" stroke-width=".7" opacity=".6"/>
+    </g>
+
+    <!-- 右端：轴头螺母 + 墙上铆钉 -->
+    <rect x="491.6" y="101" width="8.4" height="21" rx="2.2" fill="url(#gStud)"/>
+    <path d="M492 108.2H500M492 114.8H500" stroke="#3d3d3a" stroke-width=".7" opacity=".7"/>
+    <ellipse cx="487.4" cy="143" rx="2.3" ry="5" fill="url(#gScrew)" stroke="#3a3a37" stroke-width=".5"/>
+    <ellipse cx="156.6" cy="143" rx="2.3" ry="5" fill="url(#gScrew)" stroke="#3a3a37" stroke-width=".5"/>
+
+    <!-- 正面板上的零件 -->
+    <use href="#screw" x="168" y="190"/>
+    <use href="#screw" x="476" y="188"/>
+    <use href="#hole" x="176" y="418"/>
+    <use href="#hole" x="467" y="418"/>
+    <!-- 右板上的小立柱（朝外） -->
+    <rect x="469.5" y="203.5" width="14" height="17" rx="3.6" fill="#3b3b38"/>
+    <rect x="470" y="203" width="13" height="16" rx="3.4" fill="url(#gStudFace)"/>
+    <!-- 右板竖排刻字 -->
+    <g font-family="'Space Mono','JetBrains Mono',Menlo,Consolas,monospace" font-size="9.6" letter-spacing="1.15" text-anchor="middle" filter="url(#etch)">
+      <text transform="translate(467.8 312) rotate(-90)" fill="#d6d7d2" opacity=".42">SCROLL TO EXPLORE</text>
+      <text transform="translate(467 312) rotate(-90)" fill="#33332f" opacity=".8">SCROLL TO EXPLORE</text>
+    </g>
+
+    <!-- 左边那颗立柱（侧看，轴朝左） -->
+    <g id="stud">
+      <rect x="124" y="171" width="29" height="30" rx="4.5" fill="url(#gStud)"/>
+      <rect x="124" y="171" width="7" height="30" rx="3.5" fill="url(#gStud)" opacity=".9"/>
+      <path d="M130.6 172.5V199.5" stroke="#2f2f2c" stroke-width=".8" opacity=".55"/>
+      <path d="M146.5 172V200" stroke="#2c2c2a" stroke-width=".9" opacity=".55"/>
+      <path d="M147.6 172V200" stroke="#f0f0ec" stroke-width=".6" opacity=".5"/>
+      <rect x="124" y="171" width="29" height="30" rx="4.5" fill="none" stroke="#252523" stroke-width=".6" opacity=".55"/>
+    </g>
 
     <!-- 电机 -->
     <g id="motor">
-      <rect x="140" y="252" width="30" height="86" rx="3" fill="url(#gPlateL)"/>
-      <rect x="140" y="252" width="30" height="86" rx="3" fill="#000" opacity=".15"/>
-      <circle cx="160" cy="264" r="2.6" fill="url(#gScrew)"/><circle cx="160" cy="326" r="2.6" fill="url(#gScrew)"/>
-      <rect x="72" y="219" width="82" height="154" rx="6" fill="url(#gMotor)"/>
-      <rect x="72" y="219" width="82" height="154" rx="6" fill="url(#gMotorX)"/>
-      <rect x="72" y="219" width="82" height="154" rx="6" fill="#fff" filter="url(#brush)" opacity=".12"/>
-      <path d="M86 221V371M90 221V371M146 221V371" stroke="#2c2c2a" stroke-width="1.1" opacity=".55"/>
-      <path d="M87.2 221V371M91.2 221V371M147.2 221V371" stroke="#dcddd8" stroke-width=".8" opacity=".45"/>
-      <ellipse cx="73" cy="296" rx="11" ry="77" fill="url(#gCap)"/>
-      <ellipse cx="70" cy="296" rx="4" ry="16" fill="#2d2d2a"/>
-      <rect x="58" y="258" width="10" height="11" rx="1.5" fill="#cfd0cb" stroke="#5a5b57" stroke-width=".8"/>
-      <rect x="58" y="326" width="10" height="11" rx="1.5" fill="#cfd0cb" stroke="#5a5b57" stroke-width=".8"/>
-      <!-- 刻在电机上的三个联系方式图标：信封 / 相机 / 地球 -->
-      <a class="ico" href="mailto:hello@example.com" aria-label="邮件"><title>邮件</title>
-        <rect x="96" y="238" width="24" height="24" fill="transparent"/>
-        <g fill="none" stroke-width="2.3" stroke-linejoin="round" transform="translate(0 .8)" stroke="#e1e2dd" opacity=".45">
-          <rect x="97.5" y="242.5" width="21" height="15" rx="1.5"/><path d="M98 244l10 7.5 10-7.5"/></g>
-        <g class="ink" fill="none" stroke-width="2.3" stroke-linejoin="round" stroke="#3a3a37">
-          <rect x="97.5" y="242.5" width="21" height="15" rx="1.5"/><path d="M98 244l10 7.5 10-7.5"/></g>
+      <rect x="144" y="228" width="9" height="138" fill="#1b1b1a"/>
+      <rect x="146.5" y="232" width="1.2" height="130" fill="#a9aaa5" opacity=".6"/>
+      <path id="motorP" d="M86 222H147V372H86Q63 372 63 349V245Q63 222 86 222Z" fill="url(#gMotor)"/>
+      <path d="M86 222H147V372H86Q63 372 63 349V245Q63 222 86 222Z" fill="url(#gMotorX)"/>
+      <path d="M86 222H86.5V372H86Q63 372 63 349V245Q63 222 86 222Z" fill="#000" opacity=".07"/>
+      <!-- 端盖接缝 + 右端法兰 -->
+      <path d="M86.5 222.6V371.4" stroke="#33332f" stroke-width="1.1" opacity=".75"/>
+      <path d="M88 222.6V371.4" stroke="#e4e5e0" stroke-width=".8" opacity=".55"/>
+      <path d="M137.5 223V371M141.5 223V371" stroke="#2f2f2c" stroke-width=".9" opacity=".6"/>
+      <path d="M138.7 223V371M142.7 223V371" stroke="#e0e1dc" stroke-width=".6" opacity=".45"/>
+      <!-- 倒角高光 + 轮廓 -->
+      <path d="M147 223.4H86Q64.4 223.4 64.4 245V349Q64.4 370.6 86 370.6H147" fill="none" stroke="#eeeeea" stroke-width=".9" opacity=".5"/>
+      <path d="M86 222H147V372H86Q63 372 63 349V245Q63 222 86 222Z" fill="none" stroke="#2a2a28" stroke-width=".8" opacity=".55"/>
+      <!-- 端盖上的两个方印 -->
+      <rect x="73" y="261.5" width="9" height="9" rx="1.6" fill="none" stroke="#3a3a37" stroke-width="1"/>
+      <rect x="73" y="262.4" width="9" height="9" rx="1.6" fill="none" stroke="#e1e2dd" stroke-width=".6" opacity=".55"/>
+      <rect x="73" y="337.5" width="9" height="9" rx="1.6" fill="none" stroke="#3a3a37" stroke-width="1"/>
+      <rect x="73" y="338.4" width="9" height="9" rx="1.6" fill="none" stroke="#e1e2dd" stroke-width=".6" opacity=".55"/>
+      <!-- 左端轴凸 -->
+      <path d="M63.4 283.5Q57.2 284.5 57.2 294Q57.2 303.5 63.4 304.5Z" fill="#6b6c67"/>
+      <path d="M62.6 285.5Q58.4 287 58.4 294" fill="none" stroke="#dcddd8" stroke-width=".8" opacity=".6"/>
+
+      <!-- 刻在罐身上的三个入口：@ / 邮件 / 网站 -->
+      <a class="ico" href="#" aria-label="社交账号"><title>社交账号</title>
+        <rect x="94" y="236" width="25" height="25" fill="transparent"/>
+        <g fill="none" stroke-width="2.7" stroke-linecap="round" transform="translate(0 .9)" stroke="#e0e1dc" opacity=".55">
+          <circle cx="106.5" cy="248.5" r="4.4"/><path d="M110.9 244.5V250.6Q110.9 254 114 254Q117.6 254 117.6 248.5A11.1 11.1 0 1 0 112.6 257.8"/></g>
+        <g class="ink" fill="none" stroke-width="2.7" stroke-linecap="round" stroke="#454642">
+          <circle cx="106.5" cy="248.5" r="4.4"/><path d="M110.9 244.5V250.6Q110.9 254 114 254Q117.6 254 117.6 248.5A11.1 11.1 0 1 0 112.6 257.8"/></g>
       </a>
-      <a class="ico" href="#" aria-label="作品集"><title>作品集</title>
-        <rect x="96" y="280" width="24" height="24" fill="transparent"/>
-        <g fill="none" stroke-width="2.3" transform="translate(0 .8)" stroke="#e1e2dd" opacity=".45">
-          <rect x="97" y="283.5" width="22" height="17" rx="3.5"/><circle cx="108" cy="292" r="4.6"/></g>
-        <g class="ink" fill="none" stroke-width="2.3" stroke="#3a3a37">
-          <rect x="97" y="283.5" width="22" height="17" rx="3.5"/><circle cx="108" cy="292" r="4.6"/></g>
-        <circle class="inkf" cx="115" cy="287.4" r="1.3" fill="#3a3a37"/>
+      <a class="ico" href="mailto:hello@example.com" aria-label="邮件"><title>邮件</title>
+        <rect class="inkf" x="95" y="281" width="23" height="23" rx="2.2" fill="#e0e1dc" opacity=".55" transform="translate(0 .9)"/>
+        <rect class="inkf" x="95" y="281" width="23" height="23" rx="2.2" fill="#4a4b47"/>
+        <rect x="99.5" y="287" width="14" height="10.5" rx="1" fill="#9c9d98"/>
+        <path d="M100 287.8L106.5 293L113 287.8" fill="none" stroke="#4a4b47" stroke-width="1.6" stroke-linejoin="round"/>
       </a>
       <a class="ico" href="#" aria-label="个人网站"><title>个人网站</title>
-        <rect x="96" y="322" width="24" height="24" fill="transparent"/>
-        <g fill="none" stroke-width="2.1" transform="translate(0 .8)" stroke="#e1e2dd" opacity=".45">
-          <circle cx="108" cy="334" r="10.5"/><ellipse cx="108" cy="334" rx="4.6" ry="10.5"/><path d="M97.5 334h21"/></g>
-        <g class="ink" fill="none" stroke-width="2.1" stroke="#3a3a37">
-          <circle cx="108" cy="334" r="10.5"/><ellipse cx="108" cy="334" rx="4.6" ry="10.5"/><path d="M97.5 334h21"/></g>
+        <rect x="95" y="322" width="24" height="24" fill="transparent"/>
+        <g fill="none" stroke-width="2.1" transform="translate(0 .9)" stroke="#e0e1dc" opacity=".55">
+          <circle cx="106.5" cy="334" r="10.6"/><path d="M98 327.5Q106.5 333 115 327.5M98 340.5Q106.5 335 115 340.5"/><path d="M106.5 323.4Q100.6 334 106.5 344.6M106.5 323.4Q112.4 334 106.5 344.6"/></g>
+        <g class="ink" fill="none" stroke-width="2.1" stroke="#454642">
+          <circle cx="106.5" cy="334" r="10.6"/><path d="M98 327.5Q106.5 333 115 327.5M98 340.5Q106.5 335 115 340.5"/><path d="M106.5 323.4Q100.6 334 106.5 344.6M106.5 323.4Q112.4 334 106.5 344.6"/></g>
       </a>
     </g>
-
-    <!-- 辊子 -->
-    <g id="roller">
-      <rect x="158" y="91" width="334" height="45" rx="5" fill="url(#gRoll)"/>
-      <rect x="158" y="91" width="334" height="45" rx="5" fill="#fff" filter="url(#brush)" opacity=".1"/>
-      <path d="M162 103.5H488" stroke="#f1f2ed" stroke-width="1" opacity=".35"/>
-      <g font-family="'JetBrains Mono',Menlo,Consolas,monospace" font-size="13.5" letter-spacing="1.2" text-anchor="middle">
-        <text x="325" y="119.6" fill="#e3e4df" opacity=".3">DESIGN | CODE | MOTION | SHIP</text>
-        <text x="325" y="118.8" fill="#34332f" opacity=".82">DESIGN | CODE | MOTION | SHIP</text>
-      </g>
-      <!-- 左端滑轮：表面刻线会随走纸转动 -->
-      <rect x="118" y="74" width="42" height="78" rx="9" fill="url(#gPulley)"/>
-      <g clip-path="url(#clipPulley)">
-        <g id="knurl" stroke-width="1"></g>
-      </g>
-      <path d="M126 76V150M152 76V150" stroke="#1e1e1c" stroke-width="1" opacity=".45"/>
-      <rect x="107" y="101" width="12" height="18" rx="2.5" fill="url(#gKnob)"/>
-      <rect x="488" y="78" width="13" height="70" rx="4" fill="url(#gPulley)"/>
-      <rect x="500" y="103" width="8" height="14" rx="2" fill="url(#gKnob)"/>
-    </g>
+    <!-- 把电机卡在侧板上的折片 -->
+    <path d="M158.5 271H170Q173.5 271 173.5 274.5V317.5Q173.5 321 170 321H158.5Z" fill="url(#gTab)" stroke="#3a3a37" stroke-width=".7"/>
+    <rect x="163" y="278" width="5.2" height="36" rx="2.4" fill="#2e2e2c"/>
+    <rect x="163.6" y="279" width="1.2" height="34" rx=".6" fill="#77787a" opacity=".6"/>
 
     <!-- 电路板（上沿伸出视口） -->
     <g id="pcb">
-      <rect x="172" y="-46" width="306" height="126" rx="5" fill="url(#gPcb)"/>
-      <g fill="none" stroke="#3f8780" stroke-width="1.3" opacity=".55">
-        <path d="M232 -10H290V20H300"/><path d="M232 0H282V30H300"/><path d="M240 50H292V58"/><path d="M200 74V54H226"/>
-        <path d="M300 46H455"/><path d="M462 -20V40"/>
+      <path d="M175 -50H475V76Q475 82 469 82H181Q175 82 175 76Z" fill="url(#gPcb)"/>
+      <path d="M176 80.4H474" stroke="#0e2b29" stroke-width="1.6" opacity=".8"/>
+      <path d="M181 78.6H469" stroke="#3f807a" stroke-width=".7" opacity=".7"/>
+      <g fill="none" stroke="#2c6d68" stroke-width="1.1" opacity=".75">
+        <path d="M236 -6H286V14H294"/><path d="M236 2H280V22H294"/><path d="M188 40V30H200"/>
+        <path d="M300 52H322L328 58H388"/><path d="M462 -30V36"/><path d="M290 40V54"/>
       </g>
-      <path d="M300 44.5H458" stroke="#e9f2ef" stroke-width="1.1" opacity=".8"/>
-      <path d="M380 52H470" stroke="#e9f2ef" stroke-width="1" opacity=".55"/>
-      <!-- 芯片 -->
-      <rect x="300" y="-46" width="156" height="78" rx="2" fill="#121212"/>
-      <rect x="300" y="-46" width="156" height="78" rx="2" fill="url(#gTopShade)" opacity=".5"/>
-      <g fill="#b8b8b3" id="pins"></g>
-      <circle cx="311" cy="21" r="3" fill="#1d1d1d" stroke="#2a2a2a"/>
-      <!-- 排针 -->
-      <rect x="292" y="63" width="164" height="13" rx="1" fill="#141414"/>
-      <rect x="232" y="63" width="52" height="13" rx="1" fill="#141414"/>
-      <g fill="#3a3a38" id="hdr"></g>
+      <g fill="#2c6d68" opacity=".9"><circle cx="294" cy="14" r="1.4"/><circle cx="294" cy="22" r="1.4"/><circle cx="290" cy="54" r="1.4"/><circle cx="462" cy="36" r="1.4"/></g>
+      <!-- 丝印 -->
+      <path d="M325 43H456" stroke="#eaf3f0" stroke-width="1.1" opacity=".85"/>
+      <path d="M392 46H456" stroke="#eaf3f0" stroke-width=".9" opacity=".7"/>
+      <!-- 芯片 + 两个定位坑 + 一排引脚焊点 -->
+      <rect x="298" y="-50" width="158" height="84" rx="2.4" fill="url(#gChip)"/>
+      <rect x="298.6" y="-50" width="156.8" height="1" fill="#2c2c2c"/>
+      <circle cx="326" cy="12" r="6.4" fill="#0c0c0c"/><circle cx="326" cy="12.6" r="6.2" fill="none" stroke="#262626" stroke-width=".8"/>
+      <circle cx="431" cy="12" r="6.4" fill="#0c0c0c"/><circle cx="431" cy="12.6" r="6.2" fill="none" stroke="#262626" stroke-width=".8"/>
+      <g id="pins"></g>
+      <!-- 两排母座 -->
+      <g id="hdr"></g>
       <!-- 电源座 -->
-      <rect x="164" y="20" width="62" height="47" rx="3" fill="#161616"/>
-      <rect x="164" y="20" width="62" height="10" rx="3" fill="#2c2c2c"/>
-      <ellipse cx="226" cy="43" rx="5" ry="15" fill="#0b0b0b" stroke="#3a3a3a"/>
-      <!-- 电容 -->
-      <circle cx="252" cy="40" r="15.5" fill="url(#gCapa)" stroke="#6d6d68" stroke-width="1"/>
-      <circle cx="285" cy="40" r="15.5" fill="url(#gCapa)" stroke="#6d6d68" stroke-width="1"/>
-      <g font-family="Inter,Arial,sans-serif" font-size="6.4" font-weight="600" fill="#6a6a66" text-anchor="middle">
-        <text x="252" y="42.2">100µ</text><text x="285" y="42.2">16V</text>
+      <rect x="167" y="20" width="64" height="44" rx="3" fill="url(#gJack)"/>
+      <rect x="167" y="20" width="10" height="44" rx="2.5" fill="#252525"/>
+      <path d="M168 21.5V62.5" stroke="#4a4a4a" stroke-width=".8"/>
+      <path d="M169 20.7H229" stroke="#4c4c4c" stroke-width=".8"/>
+      <rect x="229" y="25" width="6" height="34" rx="2" fill="url(#gStud)"/>
+      <rect x="235" y="37" width="7" height="6" rx="1" fill="#b9b9b4"/>
+      <!-- 电解电容（俯视） -->
+      <g>
+        <circle cx="255" cy="40" r="14" fill="#7e7e7a"/><circle cx="255" cy="39.4" r="12.8" fill="url(#gCapa)"/>
+        <circle cx="285" cy="40" r="14" fill="#7e7e7a"/><circle cx="285" cy="39.4" r="12.8" fill="url(#gCapa)"/>
+        <g font-family="Inter,Arial,sans-serif" font-size="6.6" font-weight="700" fill="#62625e" text-anchor="middle" filter="url(#etch)">
+          <text x="255" y="42">100µ</text><text x="285" y="42">16V</text>
+        </g>
       </g>
       <!-- 零碎贴片 -->
-      <rect x="244" y="-34" width="10" height="5" fill="#c9c9c3"/><rect x="262" y="-34" width="10" height="5" fill="#c9c9c3"/>
-      <rect x="208" y="-24" width="14" height="22" rx="1" fill="#e9e9e4"/>
-      <rect x="276" y="56" width="11" height="5" fill="#5a3a24"/>
-      <!-- 安装孔 -->
-      <circle cx="466" cy="49" r="7" fill="#fdfbfc" stroke="#bfc9c5" stroke-width="2"/>
+      <rect x="187" y="-2" width="10" height="11" rx="1" fill="#ecece7" stroke="#b8b8b3" stroke-width=".6"/>
+      <rect x="201" y="-6" width="12" height="22" rx="2.5" fill="#151515"/><rect x="202" y="-6" width="1" height="21" fill="#353535"/>
+      <rect x="216" y="0" width="12" height="7" rx="1" fill="#cfcfca"/><rect x="216" y="9" width="12" height="6" rx="1" fill="#cfcfca"/>
+      <g fill="#111" stroke="#5f8e89" stroke-width=".5">
+        <rect x="257" y="6" width="3.4" height="3.4"/><rect x="263" y="6" width="3.4" height="3.4"/>
+        <rect x="272" y="6" width="3.4" height="3.4"/><rect x="278" y="6" width="3.4" height="3.4"/>
+        <rect x="257" y="14" width="3.4" height="3.4"/><rect x="278" y="14" width="3.4" height="3.4"/>
+      </g>
+      <!-- 晶振 -->
+      <rect x="265.5" y="63" width="19" height="9" rx="2" fill="#2b221c"/>
+      <rect x="265.5" y="63" width="3.4" height="9" rx="1" fill="#c9c9c4"/><rect x="281.1" y="63" width="3.4" height="9" rx="1" fill="#c9c9c4"/>
+      <rect x="269" y="63.6" width="12" height="1.4" fill="#5a4a3e" opacity=".8"/>
+      <circle cx="214" cy="70" r="6" fill="url(#gCapa)" stroke="#7b7b77" stroke-width=".6"/>
+      <circle cx="192" cy="70" r="3.6" fill="#a9a9a4"/>
+      <!-- 安装孔（透出背景） -->
+      <circle cx="466" cy="49" r="7" fill="#fdfbfc"/><circle cx="466" cy="49" r="7.6" fill="none" stroke="#173f3c" stroke-width="1.2"/>
+      <circle cx="240" cy="69" r="6.6" fill="#fdfbfc"/><circle cx="240" cy="69" r="7.2" fill="none" stroke="#173f3c" stroke-width="1.2"/>
       <!-- 指示灯：走纸越快越亮 -->
-      <rect x="430" y="55" width="7" height="4" rx="1" fill="#3a5a3a"/>
-      <circle id="ledGlowDot" cx="433.5" cy="57" r="4" fill="#7dff8a" filter="url(#ledGlow)" opacity=".4"/>
-      <rect id="led" x="430" y="55" width="7" height="4" rx="1" fill="#9dffab" opacity=".5"/>
+      <rect x="440" y="54.5" width="7" height="4" rx="1" fill="#2f4a32"/>
+      <circle id="ledGlowDot" cx="443.5" cy="56.5" r="4" fill="#7dff8a" filter="url(#ledGlow)" opacity=".4"/>
+      <rect id="led" x="440" y="54.5" width="7" height="4" rx="1" fill="#9dffab" opacity=".5"/>
     </g>
   </svg>
 </div>
@@ -675,34 +808,39 @@ addEventListener('resize', layout);
 /* ───────── 机器上的小零件 ───────── */
 (function parts() {
   const NS = 'http://www.w3.org/2000/svg';
-  const pins = $('#pins'), hdr = $('#hdr'), knurl = $('#knurl');
-  for (let x = 305; x < 452; x += 10.4) {
-    const r = document.createElementNS(NS, 'rect');
-    Object.entries({ x: x.toFixed(1), y: 32, width: 4.6, height: 6, fill: '#b8b8b3' }).forEach(([k, v]) => r.setAttribute(k, v));
-    pins.appendChild(r);
+  const mk = (parent, tag, attrs) => {
+    const el = document.createElementNS(NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return parent.appendChild(el);
+  };
+  // 芯片下沿一排引脚焊点
+  const pins = $('#pins');
+  for (let i = 0; i < 16; i++) mk(pins, 'rect', { x: (304.5 + i * 9.4).toFixed(1), y: 27.8, width: 4.4, height: 3.4, rx: .6, fill: '#d6d6d1' });
+  // 两排母座：黑塑料 + 方孔（孔里再暗一层）
+  const hdr = $('#hdr');
+  for (const [x0, n] of [[292, 8], [388, 6]]) {
+    const w = n * 11.2 + 2;
+    mk(hdr, 'rect', { x: x0, y: 64, width: w, height: 13.5, rx: 1.2, fill: '#121212' });
+    mk(hdr, 'rect', { x: x0, y: 64, width: w, height: 1.3, fill: '#363636' });
+    for (let i = 0; i < n; i++) {
+      const x = x0 + 2.2 + i * 11.2;
+      mk(hdr, 'rect', { x: x.toFixed(1), y: 66.4, width: 7.8, height: 8.4, fill: '#2a2a2a' });
+      mk(hdr, 'rect', { x: (x + 1.3).toFixed(1), y: 67.8, width: 5.2, height: 5.6, fill: '#030303' });
+    }
   }
-  for (const [a, b] of [[296, 452], [236, 282]]) for (let x = a; x < b; x += 9.2) {
-    const r = document.createElementNS(NS, 'rect');
-    Object.entries({ x: x.toFixed(1), y: 66.5, width: 5, height: 5, fill: '#3a3a38' }).forEach(([k, v]) => r.setAttribute(k, v));
-    hdr.appendChild(r);
-  }
-  // 滑轮表面的横纹：一圈 16 条，随走纸转动（投影到正面后越靠上下边越密，像圆柱）
-  for (let i = 0; i < 16; i++) {
-    const l = document.createElementNS(NS, 'path');
-    l.setAttribute('stroke', i % 2 ? '#2a2a28' : '#e8e9e4');
-    l.setAttribute('opacity', i % 2 ? '.35' : '.3');
-    knurl.appendChild(l);
-  }
+  // 轴承表面的横纹：一圈 16 条，随走纸转动（投影到正面后越靠上下边越密，像圆柱）
+  const knurl = $('#knurl');
+  for (let i = 0; i < 16; i++) mk(knurl, 'path', { stroke: i % 2 ? '#0e0e0d' : '#8d8e89', opacity: i % 2 ? '.22' : '.16' });
 })();
 const knurlLines = [...document.querySelectorAll('#knurl path')];
 function drawKnurl(phase) {
-  // 圆柱侧面：角度均匀 → 投影后 y = cy + r·sin(θ)
+  // 圆柱侧面：角度均匀 → 投影后 y = cy - r·cos(θ)，只画朝前的半圈
   const cy = 113, r = 40;
   knurlLines.forEach((l, i) => {
-    let th = ((i / knurlLines.length) * Math.PI * 2 + phase) % (Math.PI * 2);
-    if (th > Math.PI) { l.setAttribute('d', ''); return; }     // 背面的不画
+    const th = ((i / knurlLines.length) * Math.PI * 2 + phase) % (Math.PI * 2);
+    if (th > Math.PI) { l.setAttribute('d', ''); return; }
     const y = cy - r * Math.cos(th);
-    l.setAttribute('d', `M119 ${y.toFixed(2)}H159`);
+    l.setAttribute('d', `M122 ${y.toFixed(2)}H143.5`);
   });
 }
 
