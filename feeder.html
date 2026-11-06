@@ -50,13 +50,17 @@
   #strip{position:absolute;left:0;top:0;width:256px;will-change:transform}
   .card{position:relative;width:256px;overflow:hidden;margin-bottom:3px;background:#fff}
   .card > .site{transform:scale(.2);transform-origin:0 0}
-  /* 纸刚从辊子底下出来那一截：一道暗缝 + 一层发灰的雾 + 一点虚，像纸还在弯 */
-  #paper .blur{position:absolute;left:0;right:0;top:0;height:96px;pointer-events:none;
-    -webkit-backdrop-filter:blur(2.2px) saturate(.55);backdrop-filter:blur(2.2px) saturate(.55);
-    -webkit-mask-image:linear-gradient(#000 35%,transparent);mask-image:linear-gradient(#000 35%,transparent)}
-  #paper .fog{position:absolute;left:0;right:0;top:0;height:112px;pointer-events:none;
-    background:linear-gradient(180deg,rgba(30,27,24,.85) 0,rgba(110,105,100,.6) 3px,rgba(228,226,221,.97) 9px,
-      rgba(222,220,216,.88) 30px,rgba(214,212,208,.6) 58px,rgba(210,208,204,.24) 86px,rgba(210,208,204,0) 112px)}
+  /* 纸刚从辊子底下出来那一截：一道暗缝 + 一层灰白的雾 + 一点虚，像纸还在弯。
+     雾的曲线是从参考视频量的：每行取全片 56 帧的亮度，标准差 / 完全透明处的标准差 = 透出比例。
+     雾色约 #dedcd9，出口下 16px 几乎不透明，之后近似线性变淡，到 160px 才完全透出内容 */
+  #paper .blur{position:absolute;left:0;right:0;top:0;height:132px;pointer-events:none;
+    -webkit-backdrop-filter:blur(2.4px) saturate(.5);backdrop-filter:blur(2.4px) saturate(.5);
+    -webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)}
+  #paper .fog{position:absolute;left:0;right:0;top:0;height:172px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(14,13,12,.95) 0,rgba(40,39,37,.92) 3px,rgba(72,71,68,.9) 5px,
+      rgba(172,171,168,.95) 8px,rgba(214,213,210,.98) 11px,rgba(224,223,220,.98) 16px,
+      rgba(222,221,218,.86) 40px,rgba(222,221,218,.66) 64px,rgba(222,221,218,.48) 88px,
+      rgba(222,221,218,.31) 112px,rgba(222,221,218,.17) 136px,rgba(222,221,218,.05) 160px,rgba(222,221,218,0) 172px)}
   #paper .edge{position:absolute;top:0;height:343px;width:9px;pointer-events:none;
     -webkit-mask-image:linear-gradient(#000 85%,transparent);mask-image:linear-gradient(#000 85%,transparent)}
   #paper .edge.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.32),rgba(0,0,0,0))}
@@ -309,16 +313,24 @@
   <!-- ═══ 前层：辊子、轴承、钣金侧架、电机、电路板 ═══ -->
   <svg id="front" width="575" height="720" viewBox="0 0 575 720">
     <defs>
-      <!-- 辊子：拉丝不锈钢管 -->
+      <!-- 圆柱件的明暗都按参考视频逐行取的亮度标定：光从上偏前打下来，
+           高光带落在上方约 1/3 处、很亮，下半截一路压到很暗——这是「圆」的主要来源 -->
+      <!-- 辊子：拉丝不锈钢管（高光在 y≈108，亮到 ~240） -->
       <linearGradient id="gRoll" x1="0" y1="92" x2="0" y2="135" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#2a2a28"/><stop offset=".05" stop-color="#6c6d68"/><stop offset=".15" stop-color="#c2c3be"/>
-        <stop offset=".28" stop-color="#b9bab5"/><stop offset=".52" stop-color="#a3a49f"/><stop offset=".74" stop-color="#7a7b76"/>
-        <stop offset=".9" stop-color="#43423e"/><stop offset="1" stop-color="#151412"/>
+        <stop offset="0" stop-color="#262624"/><stop offset=".09" stop-color="#383836"/><stop offset=".16" stop-color="#4e4e4b"/>
+        <stop offset=".23" stop-color="#6b6b68"/><stop offset=".3" stop-color="#a7a7a3"/><stop offset=".37" stop-color="#eeeeea"/>
+        <stop offset=".44" stop-color="#cfcfca"/><stop offset=".51" stop-color="#a1a19c"/><stop offset=".6" stop-color="#8c8c88"/>
+        <stop offset=".7" stop-color="#7f7f7b"/><stop offset=".8" stop-color="#868682"/><stop offset=".87" stop-color="#474744"/>
+        <stop offset=".93" stop-color="#121211"/><stop offset="1" stop-color="#0c0b0a"/>
       </linearGradient>
-      <!-- 轴承：中间一圈深色、两侧亮边 -->
+      <!-- 轴承外圈：抛光钢，中间亮（参考里 ~248），上缘和下半截暗 -->
       <linearGradient id="gBear" x1="0" y1="73" x2="0" y2="153" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#1c1c1b"/><stop offset=".14" stop-color="#3e3f3c"/><stop offset=".33" stop-color="#6e6f6b"/>
-        <stop offset=".46" stop-color="#585955"/><stop offset=".75" stop-color="#2d2d2b"/><stop offset="1" stop-color="#121211"/>
+        <stop offset="0" stop-color="#2c2c2b"/><stop offset=".06" stop-color="#5f605c"/><stop offset=".11" stop-color="#3e3f3c"/>
+        <stop offset=".16" stop-color="#464744"/><stop offset=".21" stop-color="#7a7b77"/><stop offset=".26" stop-color="#c6c7c2"/>
+        <stop offset=".31" stop-color="#e8e9e4"/><stop offset=".38" stop-color="#f4f5f0"/><stop offset=".43" stop-color="#f2f3ee"/>
+        <stop offset=".47" stop-color="#e0e1dc"/><stop offset=".51" stop-color="#b2b3ae"/><stop offset=".56" stop-color="#7b7c78"/>
+        <stop offset=".61" stop-color="#535451"/><stop offset=".67" stop-color="#3a3b38"/><stop offset=".75" stop-color="#282826"/>
+        <stop offset=".86" stop-color="#2b2b29"/><stop offset=".92" stop-color="#3a3a38"/><stop offset="1" stop-color="#1a1a19"/>
       </linearGradient>
       <linearGradient id="gRim" x1="0" y1="73" x2="0" y2="153" gradientUnits="userSpaceOnUse">
         <stop offset="0" stop-color="#5d5e5a"/><stop offset=".1" stop-color="#b4b5b0"/><stop offset=".3" stop-color="#f6f6f2"/>
@@ -348,17 +360,23 @@
       <linearGradient id="gRecess" x1="0" y1="149" x2="0" y2="172" gradientUnits="userSpaceOnUse">
         <stop offset="0" stop-color="#0b0b0a"/><stop offset=".75" stop-color="#1e1d1b"/><stop offset="1" stop-color="#34332f"/>
       </linearGradient>
-      <!-- 电机罐：横放的圆柱，上亮下暗 -->
+      <!-- 电机罐：横放的圆柱。参考视频 x=650（设计坐标 130）一列：顶边 ~120 → y≈267 高光 ~239 → 中线 ~150 → 下半截 ~60 -->
       <linearGradient id="gMotor" x1="0" y1="222" x2="0" y2="372" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#4a4b48"/><stop offset=".03" stop-color="#8f908b"/><stop offset=".1" stop-color="#c6c7c2"/>
-        <stop offset=".2" stop-color="#b3b4af"/><stop offset=".5" stop-color="#a0a19c"/><stop offset=".8" stop-color="#8a8b86"/>
-        <stop offset=".95" stop-color="#666762"/><stop offset="1" stop-color="#3d3d3a"/>
+        <stop offset="0" stop-color="#454643"/><stop offset=".03" stop-color="#767773"/><stop offset=".08" stop-color="#797a76"/>
+        <stop offset=".12" stop-color="#8b8c88"/><stop offset=".16" stop-color="#a5a6a1"/><stop offset=".2" stop-color="#c9cac5"/>
+        <stop offset=".24" stop-color="#e3e4df"/><stop offset=".29" stop-color="#eff0eb"/><stop offset=".33" stop-color="#eeefea"/>
+        <stop offset=".37" stop-color="#e6e7e2"/><stop offset=".41" stop-color="#d0d1cc"/><stop offset=".45" stop-color="#bdbeb9"/>
+        <stop offset=".49" stop-color="#aaaba6"/><stop offset=".53" stop-color="#8f908b"/><stop offset=".57" stop-color="#7e7f7b"/>
+        <stop offset=".61" stop-color="#6b6c68"/><stop offset=".65" stop-color="#595a56"/><stop offset=".69" stop-color="#4d4e4a"/>
+        <stop offset=".73" stop-color="#444541"/><stop offset=".78" stop-color="#3c3d3a"/><stop offset=".88" stop-color="#3a3b38"/>
+        <stop offset=".94" stop-color="#474845"/><stop offset=".98" stop-color="#484946"/><stop offset="1" stop-color="#2c2c2a"/>
       </linearGradient>
+      <!-- 横向只做很轻的修饰：左端盖鼓起来那一下更亮，右端法兰前一点点反光 -->
       <linearGradient id="gMotorX" x1="63" y1="0" x2="152" y2="0" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#000" stop-opacity=".3"/><stop offset=".1" stop-color="#000" stop-opacity=".12"/>
-        <stop offset=".26" stop-color="#000" stop-opacity=".04"/><stop offset=".32" stop-color="#fff" stop-opacity=".13"/>
-        <stop offset=".52" stop-color="#fff" stop-opacity=".06"/><stop offset=".8" stop-color="#000" stop-opacity=".02"/>
-        <stop offset="1" stop-color="#000" stop-opacity=".32"/>
+        <stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset=".05" stop-color="#fff" stop-opacity=".1"/>
+        <stop offset=".18" stop-color="#000" stop-opacity=".06"/><stop offset=".27" stop-color="#000" stop-opacity="0"/>
+        <stop offset=".36" stop-color="#fff" stop-opacity=".05"/><stop offset=".7" stop-color="#fff" stop-opacity=".02"/>
+        <stop offset=".84" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#000" stop-opacity=".3"/>
       </linearGradient>
       <!-- 小圆柱件（立柱、轴头、螺母） -->
       <linearGradient id="gStud" x1="0" y1="0" x2="0" y2="1">
@@ -403,7 +421,14 @@
       </filter>
       <filter id="etch" x="-5%" y="-30%" width="110%" height="160%"><feGaussianBlur stdDeviation=".28"/></filter>
       <filter id="ledGlow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="2.4"/></filter>
-      <clipPath id="clipBear"><rect x="122" y="73" width="21.5" height="80"/></clipPath>
+      <!-- 窄屏用：电路板上沿在桌面上伸出视口看不到，手机上会整块露出来，改成往上渐隐 -->
+      <linearGradient id="gPcbFade" x1="0" y1="-50" x2="0" y2="24" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#000"/><stop offset=".35" stop-color="#000"/><stop offset="1" stop-color="#fff"/>
+      </linearGradient>
+      <mask id="pcbFade" maskUnits="userSpaceOnUse" x="150" y="-60" width="360" height="160">
+        <rect x="150" y="-60" width="360" height="160" fill="url(#gPcbFade)"/>
+      </mask>
+      <clipPath id="clipBear"><rect x="120" y="73" width="25.5" height="80"/></clipPath>
 
       <!-- 左侧架（墙 + 正面板 + 底唇 + 脚），右边用镜像复用 -->
       <path id="wallP" d="M156.5 71.5Q161 71.5 161 77.5V470H171.5V476.5L164.8 487.4Q162.8 490.3 159.4 489.7Q152 487.9 152 478V77.5Q152 71.5 156.5 71.5Z"/>
@@ -451,6 +476,8 @@
     <!-- 侧架：左原件 + 右镜像 -->
     <use href="#side"/>
     <use href="#side" transform="matrix(-1 0 0 1 644 0)"/>
+    <rect x="161" y="172" width="33" height="306" fill="#000" opacity=".07"/>
+    <rect x="450" y="172" width="33" height="306" fill="#000" opacity=".2"/>
 
     <!-- 左端轴承（侧看）：表面刻线随走纸转 -->
     <g id="bearing">
@@ -458,9 +485,9 @@
       <rect x="105" y="102" width="3" height="19" rx="1.5" fill="#7d7e79" opacity=".6"/>
       <rect x="113" y="73" width="39.5" height="80" rx="9" fill="url(#gBear)"/>
       <g clip-path="url(#clipBear)"><g id="knurl" stroke-width=".9"></g></g>
-      <rect x="113" y="73" width="9" height="80" rx="4.5" fill="url(#gRim)"/>
-      <rect x="143.5" y="73" width="9" height="80" rx="4.5" fill="url(#gRim)"/>
-      <path d="M122.1 76V150M143.4 76V150" stroke="#141413" stroke-width=".9" opacity=".7"/>
+      <rect x="113" y="73" width="7" height="80" rx="3.5" fill="url(#gRim)"/>
+      <rect x="145.5" y="73" width="7" height="80" rx="3.5" fill="url(#gRim)"/>
+      <path d="M120.1 76V150M145.4 76V150" stroke="#141413" stroke-width=".9" opacity=".7"/>
       <rect x="113" y="73" width="39.5" height="80" rx="9" fill="none" stroke="#1a1a19" stroke-width=".7" opacity=".6"/>
     </g>
 
@@ -523,20 +550,20 @@
         <rect x="94" y="236" width="25" height="25" fill="transparent"/>
         <g fill="none" stroke-width="2.7" stroke-linecap="round" transform="translate(0 .9)" stroke="#e0e1dc" opacity=".55">
           <circle cx="106.5" cy="248.5" r="4.4"/><path d="M110.9 244.5V250.6Q110.9 254 114 254Q117.6 254 117.6 248.5A11.1 11.1 0 1 0 112.6 257.8"/></g>
-        <g class="ink" fill="none" stroke-width="2.7" stroke-linecap="round" stroke="#454642">
+        <g class="ink" fill="none" stroke-width="2.7" stroke-linecap="round" stroke="#2b2b29">
           <circle cx="106.5" cy="248.5" r="4.4"/><path d="M110.9 244.5V250.6Q110.9 254 114 254Q117.6 254 117.6 248.5A11.1 11.1 0 1 0 112.6 257.8"/></g>
       </a>
       <a class="ico" href="mailto:hello@example.com" aria-label="邮件"><title>邮件</title>
         <rect class="inkf" x="95" y="281" width="23" height="23" rx="2.2" fill="#e0e1dc" opacity=".55" transform="translate(0 .9)"/>
-        <rect class="inkf" x="95" y="281" width="23" height="23" rx="2.2" fill="#4a4b47"/>
+        <rect class="inkf" x="95" y="281" width="23" height="23" rx="2.2" fill="#3a3b38"/>
         <rect x="99.5" y="287" width="14" height="10.5" rx="1" fill="#9c9d98"/>
-        <path d="M100 287.8L106.5 293L113 287.8" fill="none" stroke="#4a4b47" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M100 287.8L106.5 293L113 287.8" fill="none" stroke="#3a3b38" stroke-width="1.6" stroke-linejoin="round"/>
       </a>
       <a class="ico" href="#" aria-label="个人网站"><title>个人网站</title>
         <rect x="95" y="322" width="24" height="24" fill="transparent"/>
         <g fill="none" stroke-width="2.1" transform="translate(0 .9)" stroke="#e0e1dc" opacity=".55">
           <circle cx="106.5" cy="334" r="10.6"/><path d="M98 327.5Q106.5 333 115 327.5M98 340.5Q106.5 335 115 340.5"/><path d="M106.5 323.4Q100.6 334 106.5 344.6M106.5 323.4Q112.4 334 106.5 344.6"/></g>
-        <g class="ink" fill="none" stroke-width="2.1" stroke="#454642">
+        <g class="ink" fill="none" stroke-width="2.1" stroke="#2b2b29">
           <circle cx="106.5" cy="334" r="10.6"/><path d="M98 327.5Q106.5 333 115 327.5M98 340.5Q106.5 335 115 340.5"/><path d="M106.5 323.4Q100.6 334 106.5 344.6M106.5 323.4Q112.4 334 106.5 344.6"/></g>
       </a>
     </g>
@@ -621,7 +648,7 @@ const LOGO_PERIOD = 4000;
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const $ = s => document.querySelector(s);
-const rig = $('#rig'), paper = $('#paper'), strip = $('#strip'), copyEl = $('#copy');
+const rig = $('#rig'), paper = $('#paper'), strip = $('#strip'), copyEl = $('#copy'), pcb = $('#pcb');
 
 /* ───────── 一点工具 ───────── */
 const f1 = n => Math.round(n * 10) / 10;
@@ -799,6 +826,7 @@ function layout() {
     y = top + 52 * scale;
   }
   rig.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
+  if (narrow) pcb.setAttribute('mask', 'url(#pcbFade)'); else pcb.removeAttribute('mask');
   paperH = Math.max(586, Math.ceil((H - y) / scale - 134) + 2);
   paper.style.height = paperH + 'px';
   ensureCopies();
@@ -840,7 +868,7 @@ function drawKnurl(phase) {
     const th = ((i / knurlLines.length) * Math.PI * 2 + phase) % (Math.PI * 2);
     if (th > Math.PI) { l.setAttribute('d', ''); return; }
     const y = cy - r * Math.cos(th);
-    l.setAttribute('d', `M122 ${y.toFixed(2)}H143.5`);
+    l.setAttribute('d', `M120 ${y.toFixed(2)}H145.5`);
   });
 }
 
