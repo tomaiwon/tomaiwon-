@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>出片机</title>
+<style>
+  :root{--bg:#fdfbfc;--ink:#181617;--mute:#8f8d8e;--faint:#b6b4b5;--line:#ecEAEB}
+  *{box-sizing:border-box;margin:0;padding:0}
+  /* 左栏所有尺寸都用 rem：1rem = 视频里 720 高画面的 16px，按视口等比缩放 */
+  html{font-size:clamp(11px,min(2.2222vh,1.4625vw),22px)}
+  html,body{height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:"Inter","Helvetica Neue",-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+
+  /* ───────── 左栏 ───────── */
+  .copy{position:absolute;left:0;top:0;bottom:0;width:min(30rem,46vw);padding:1.85rem 1.8rem 1.85rem;
+    display:flex;flex-direction:column;z-index:2}
+  .who{display:flex;align-items:center;gap:.6rem;font-size:.8125rem;line-height:1.2}
+  .who .ava{width:2.5rem;height:2.5rem;border-radius:50%;flex:none;display:grid;place-items:center;
+    background:radial-gradient(circle at 35% 30%,#5b5655,#1d1a19 70%);color:#f3efe9;font-size:1.05rem;letter-spacing:0}
+  .who b{display:block;font-weight:500}
+  .who em{display:block;font-style:normal;color:var(--mute)}
+  h1{margin-top:3.55rem;font-size:2.5rem;line-height:1.05;font-weight:500;letter-spacing:-.035em}
+  .lede{margin-top:.75rem;font-size:.9375rem;line-height:1.4rem;color:#2a2829}
+  .cta{margin-top:1.75rem;display:flex;gap:.55rem;flex-wrap:wrap}
+  .cta a{height:2.625rem;padding:0 2rem;border-radius:99px;display:inline-flex;align-items:center;
+    font-size:.9375rem;transition:transform .25s cubic-bezier(.3,.7,.3,1),background .25s,color .25s,border-color .25s}
+  .btn{background:#000;color:#fff}
+  .btn:hover{transform:translateY(-2px);background:#222}
+  .mail{border:1px solid var(--line);color:var(--mute)}
+  .mail:hover{color:var(--ink);border-color:#d7d5d6}
+  .clients{margin-top:auto;font-size:.8125rem;line-height:1.2rem}
+  .clients p span{color:var(--mute)}
+  .logos{display:flex;justify-content:space-between;align-items:center;width:26.6rem;max-width:100%;height:2.6rem;margin:1.05rem 0 1.15rem -.1rem}
+  .lg{display:flex;align-items:center;gap:.3rem;color:#3c3a3b;white-space:nowrap;
+    transition:opacity .38s ease,filter .38s ease;will-change:filter,opacity}
+  .lg svg{width:1.2rem;height:1.2rem;flex:none}
+  .lg.off{opacity:0;filter:blur(7px)}
+  .clients small{display:block;font-size:.625rem;color:var(--mute);letter-spacing:.01em}
+
+  /* ───────── 机器 ───────── */
+  /* 机器按视频里的像素坐标搭（575×720 一帧），整体 scale 到视口 */
+  #rig{position:absolute;left:0;top:0;width:575px;height:720px;transform-origin:0 0;z-index:1}
+  #rig > svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+  #paper{position:absolute;left:194px;top:134px;width:256px;height:586px;overflow:hidden;
+    background:#e9e8e5;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+  #paper.grab{cursor:grabbing}
+  #strip{position:absolute;left:0;top:0;width:256px;will-change:transform}
+  .card{position:relative;width:256px;overflow:hidden;margin-bottom:3px;background:#fff}
+  .card > .site{transform:scale(.2);transform-origin:0 0}
+  /* 纸刚从辊子底下出来那一截：一道暗缝 + 一层发灰的雾 + 一点虚，像纸还在弯 */
+  #paper .blur{position:absolute;left:0;right:0;top:0;height:96px;pointer-events:none;
+    -webkit-backdrop-filter:blur(2.2px) saturate(.55);backdrop-filter:blur(2.2px) saturate(.55);
+    -webkit-mask-image:linear-gradient(#000 35%,transparent);mask-image:linear-gradient(#000 35%,transparent)}
+  #paper .fog{position:absolute;left:0;right:0;top:0;height:112px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(30,27,24,.85) 0,rgba(110,105,100,.6) 3px,rgba(228,226,221,.97) 9px,
+      rgba(222,220,216,.88) 30px,rgba(214,212,208,.6) 58px,rgba(210,208,204,.24) 86px,rgba(210,208,204,0) 112px)}
+  #paper .edge{position:absolute;top:0;height:354px;width:9px;pointer-events:none;
+    -webkit-mask-image:linear-gradient(#000 85%,transparent);mask-image:linear-gradient(#000 85%,transparent)}
+  #paper .edge.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.32),rgba(0,0,0,0))}
+  #paper .edge.r{right:0;background:linear-gradient(270deg,rgba(0,0,0,.32),rgba(0,0,0,0))}
+  .ico{pointer-events:all;cursor:pointer}
+  .ico .ink{transition:stroke .2s,fill .2s}
+  .ico:hover .ink{stroke:#0e0e0d}
+  .ico:hover .inkf{fill:#0e0e0d}
+
+  /* ───────── 窄屏：上文下机 ───────── */
+  body.narrow .copy{position:relative;width:auto;bottom:auto;padding:22px 20px 0}
+  body.narrow h1{margin-top:1.6rem;font-size:1.95rem}
+  body.narrow .lede br{display:none}
+  body.narrow .cta{margin-top:1.1rem}
+  body.narrow .clients{margin-top:1.3rem}
+  body.narrow .logos{width:100%;margin:.6rem 0 0}
+  body.narrow .clients small{display:none}
+  body.narrow .clients p span{display:none}
+
+  /* ════════ 纸上的网页（1280 宽排好，再缩到 0.2） ════════ */
+  .site{position:relative;width:1280px;overflow:hidden;font-family:"Inter","Helvetica Neue",Arial,sans-serif;line-height:1.35}
+  .site .nav{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;
+    padding:28px 56px;font-size:15px;z-index:3}
+  .site .nav .ln{display:flex;gap:34px}
+  .serif{font-family:Georgia,"Times New Roman",serif}
+
+  /* 1 霓虹 */
+  .s-neon{height:920px;background:#04050a;color:#fff}
+  .s-neon .nav{color:#b9bccb}
+  .s-neon .nav b{color:#fff;font-size:22px;letter-spacing:-.02em}
+  .s-neon .nav .pl{border:1px solid #2c2f3d;border-radius:99px;padding:8px 18px;color:#fff;background:#0b0d16}
+  .s-neon .limb{position:absolute;left:-700px;top:-1600px;width:1800px;height:1800px;border-radius:50%;background:#020309;
+    box-shadow:0 0 0 2px rgba(170,205,255,.7),0 0 50px 14px rgba(70,130,255,.85),0 0 220px 70px rgba(40,90,255,.4)}
+  .s-neon .rings{position:absolute;right:-60px;top:-40px}
+  .s-neon .r0{fill:none;stroke:#2257ff;stroke-width:40;opacity:.8}
+  .s-neon .r1{fill:none;stroke:#4f97ff;stroke-width:20}
+  .s-neon .r2{fill:none;stroke:#cfe6ff;stroke-width:5}
+  .s-neon .r3{fill:none;stroke:#3f86ff;stroke-width:7;opacity:.55}
+  .s-neon h2{position:absolute;left:72px;top:330px;font-size:78px;line-height:.98;font-weight:400;letter-spacing:-.035em}
+  .s-neon h2 em{font-style:normal;color:#86b2ff}
+  .s-neon p{position:absolute;left:74px;top:520px;width:470px;font-size:18px;color:#8f95ab}
+  .s-neon .dot{position:absolute;left:632px;top:585px;width:16px;height:16px;border-radius:50%;background:#5c9dff;box-shadow:0 0 18px #3f86ff}
+  .s-neon .stats{position:absolute;left:56px;right:56px;top:650px;display:flex;justify-content:space-between;
+    border-top:1px solid #1d2030;border-bottom:1px solid #1d2030;padding:20px 0}
+  .s-neon .stats b{font-family:Georgia,serif;font-weight:400;font-size:40px}
+  .s-neon .stats span{font-size:14px;color:#80869c;margin-left:12px}
+  .s-neon .tiles{position:absolute;left:56px;right:56px;top:760px;height:170px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .s-neon .tiles div{background:#f2f2f5;border-radius:4px;position:relative;overflow:hidden}
+  .s-neon .tiles .t1::before{content:"";position:absolute;left:150px;top:34px;width:220px;height:150px;border-radius:8px 8px 0 0;
+    background:linear-gradient(135deg,#232633,#5d6478);box-shadow:60px 20px 0 -10px #c9ccd6}
+  .s-neon .tiles .t2{background:#e7e7ec}
+
+  /* 2 光球 */
+  .s-orb{height:800px;background:radial-gradient(60% 70% at 50% 28%,#fff 0,#eeedf2 55%,#e1e0e6 100%);color:#1c1b22}
+  .s-orb .nav{color:#55545e}
+  .s-orb .nav b{color:#1c1b22;font-size:20px}
+  .s-orb .nav .pl{background:#1c1b22;color:#fff;padding:9px 18px;border-radius:6px}
+  .s-orb .orb{position:absolute;left:440px;top:30px;width:400px;height:400px;border-radius:50%;
+    background:radial-gradient(circle at 46% 40%,#fff 0,#f4f1ff 32%,#ddd6f5 58%,rgba(210,200,245,0) 72%);
+    box-shadow:0 0 160px 50px rgba(206,190,255,.55)}
+  .s-orb .orb svg{position:absolute;left:0;top:0;opacity:.8;
+    -webkit-mask-image:radial-gradient(circle,#000 42%,transparent 66%);mask-image:radial-gradient(circle,#000 42%,transparent 66%)}
+  .s-orb h2{position:absolute;left:72px;top:470px;font-size:56px;line-height:1.02;font-weight:400;letter-spacing:-.03em;color:#4a4954}
+  .s-orb h2 i{font-family:Georgia,serif;color:#16151b}
+  .s-orb .bt{position:absolute;left:74px;top:680px;display:flex;gap:12px;font-size:15px}
+  .s-orb .bt span{padding:11px 22px;border-radius:6px;background:#26252c;color:#fff}
+  .s-orb .bt span+span{background:#fff;color:#26252c;border:1px solid #d6d5dc}
+  .s-orb p{position:absolute;right:72px;top:560px;width:300px;font-size:15px;color:#6b6a74}
+
+  /* 3 棱光 */
+  .s-prism{height:900px;background:#060608;color:#fff}
+  .s-prism .nav{color:#8c8c96}
+  .s-prism .nav b{color:#fff;font-size:20px}
+  .s-prism .fan{position:absolute;left:640px;top:760px;width:0;height:0}
+  .s-prism .fan i{position:absolute;left:-75px;bottom:0;width:150px;height:820px;border-radius:75px;transform-origin:50% 100%;
+    mix-blend-mode:screen;filter:blur(7px)}
+  .s-prism h2{position:absolute;left:0;right:0;top:170px;text-align:center;font-size:72px;line-height:1.02;font-weight:400;letter-spacing:-.03em}
+  .s-prism .sub{position:absolute;left:0;right:0;top:340px;text-align:center;font-size:18px;color:#a8a8b4}
+  .s-prism .go{position:absolute;left:578px;top:410px;padding:12px 22px;background:#000;border:1px solid #333;border-radius:6px;font-size:15px}
+  .s-prism .foot{position:absolute;left:0;right:0;top:600px;bottom:0;padding:50px 72px;
+    background:linear-gradient(rgba(6,6,8,0),rgba(6,6,8,.82) 30%);display:flex;justify-content:space-between}
+  .s-prism .foot .l b{font-size:24px;font-weight:500}
+  .s-prism .foot .l p{margin-top:16px;width:430px;font-size:15px;color:#8b8b96}
+  .s-prism .foot .c{display:flex;gap:70px;font-size:15px;color:#c2c2cc;line-height:2}
+  .s-prism .copyr{position:absolute;left:72px;right:72px;bottom:26px;display:flex;justify-content:space-between;font-size:13px;color:#5d5d68}
+
+  /* 4 复古 */
+  .s-retro{height:900px;background:#f6eedb;color:#1a1a1a}
+  .s-retro .pill{position:absolute;left:250px;top:26px;width:780px;height:56px;background:#fff;border:2px solid #1a1a1a;border-radius:12px;
+    display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 22px;font-size:15px}
+  .s-retro .pill b{font-family:Georgia,serif;font-style:italic;color:#d4462f;font-size:24px}
+  .s-retro .pill span{display:flex;gap:28px}
+  .s-retro .pill em{font-style:normal;background:#1a1a1a;color:#fff;padding:10px 18px;border-radius:8px}
+  .s-retro .mac{position:absolute;left:470px;top:150px;width:340px;height:330px;border-radius:20px 20px 10px 10px;
+    background:linear-gradient(160deg,#efe7d2,#d8cdb2);box-shadow:inset -10px -14px 24px rgba(120,100,60,.22),inset 6px 6px 12px rgba(255,255,255,.6),0 18px 30px rgba(80,60,20,.15)}
+  .s-retro .scr{position:absolute;left:34px;top:30px;width:272px;height:210px;border-radius:14px;background:#d2c7aa;padding:16px;
+    box-shadow:inset 0 3px 8px rgba(0,0,0,.18)}
+  .s-retro .scr div{width:100%;height:100%;border-radius:10px;background:#fbfaf5;border:8px solid #2a2a28;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:6px;font-size:12px;text-align:center;line-height:1.25}
+  .s-retro .slot{position:absolute;right:40px;bottom:36px;width:110px;height:9px;border-radius:4px;background:#3a352b}
+  .s-retro .base{position:absolute;left:510px;top:478px;width:260px;height:40px;border-radius:0 0 12px 12px;background:linear-gradient(#d5c9ac,#c2b593)}
+  .s-retro .cup{position:absolute;left:110px;top:200px}
+  .s-retro .face{position:absolute;right:110px;top:150px}
+  .s-retro h2{position:absolute;left:0;right:0;top:600px;text-align:center;font-size:64px;font-weight:400;letter-spacing:-.025em}
+  .s-retro .sub{position:absolute;left:0;right:0;top:690px;text-align:center;font-size:18px;color:#6d6656}
+  .s-retro .bt{position:absolute;left:0;right:0;top:750px;display:flex;justify-content:center;gap:12px;font-size:15px}
+  .s-retro .bt span{padding:12px 22px;border-radius:10px;border:2px solid #1a1a1a;background:#fff}
+  .s-retro .bt span:first-child{background:#1a1a1a;color:#fff}
+
+  /* 5 拼贴 */
+  .s-col{height:860px;background:#0d0d0d;color:#fff}
+  .s-col .nav{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#a9a9a9}
+  .s-col h2{position:absolute;left:64px;top:150px;font-size:96px;line-height:.9;font-weight:800;letter-spacing:-.01em;
+    transform:scaleX(.78);transform-origin:0 0;white-space:nowrap}
+  .s-col .chips{position:absolute;left:64px;top:470px;display:flex;gap:14px;font-size:14px;align-items:center;color:#9a9a9a}
+  .s-col .chips b{background:#fff;color:#0d0d0d;padding:9px 18px;border-radius:99px;font-weight:500}
+  .s-col .folder{position:absolute;left:720px;top:120px;width:430px;height:310px;border-radius:6px;
+    background:linear-gradient(170deg,#c99d69,#a77a49);transform:rotate(-3deg);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .s-col .folder::before{content:"";position:absolute;left:24px;top:-26px;width:150px;height:34px;border-radius:6px 6px 0 0;background:#c49764}
+  .s-col .sheet{position:absolute;left:560px;top:180px;width:330px;height:270px;background:#f3f1ea;transform:rotate(4deg);
+    padding:26px;color:#1b1b1b;box-shadow:0 10px 24px rgba(0,0,0,.45);
+    background-image:repeating-linear-gradient(transparent 0 25px,#dad6cb 25px 26px)}
+  .s-col .sheet b{display:block;font-size:22px;letter-spacing:.04em;line-height:1.1}
+  .s-col .sheet small{display:block;margin-top:10px;font-size:13px;color:#777}
+  .s-col .pola{position:absolute;left:850px;top:390px;width:300px;height:340px;background:#f7f6f1;padding:16px 16px 70px;
+    transform:rotate(-5deg);box-shadow:0 14px 30px rgba(0,0,0,.5)}
+  .s-col .pola div{position:relative;width:100%;height:100%;background:linear-gradient(165deg,#47697c,#a98965 70%,#c99c6c);overflow:hidden}
+  .s-col .pola div::before{content:"";position:absolute;left:84px;top:52px;width:96px;height:110px;border-radius:50%;background:#1d1a18}
+  .s-col .pola div::after{content:"";position:absolute;left:30px;top:150px;width:210px;height:200px;border-radius:100px 100px 0 0;background:#1d1a18}
+  .s-col .sticky{position:absolute;left:600px;top:480px;width:180px;height:170px;background:#f5e07a;transform:rotate(7deg);padding:20px;
+    color:#2a2410;font:italic 22px/1.25 "Segoe Print","Bradley Hand","Comic Sans MS",cursive;box-shadow:0 8px 18px rgba(0,0,0,.4)}
+  .s-col .ticket{position:absolute;left:520px;top:690px;width:270px;height:96px;background:#ece2c8;transform:rotate(-2deg);
+    border:2px dashed #b9aa82;color:#3b3322;padding:16px 20px;font:700 15px/1.3 "JetBrains Mono",Menlo,monospace;letter-spacing:.12em}
+  .s-col .scrib{position:absolute;left:0;top:0}
+
+  /* 6 丝绸 */
+  .s-silk{height:760px;background:linear-gradient(180deg,#b9bbc2 0,#dfe0e5 52%,#f2f2f4 100%);color:#17171b}
+  .s-silk .nav{color:#3d3d45}
+  .s-silk .nav b{color:#17171b;font-size:20px}
+  .s-silk .nav .pl{border:1px solid #9a9ba3;border-radius:99px;padding:8px 18px}
+  .s-silk .waves{position:absolute;left:0;top:0}
+  .s-silk h2{position:absolute;left:72px;top:440px;font-size:62px;line-height:1.02;font-weight:500;letter-spacing:-.035em}
+  .s-silk p{position:absolute;left:74px;top:580px;width:420px;font-size:16px;color:#55555f}
+  .s-silk .bt{position:absolute;left:74px;top:660px;display:flex;gap:12px;font-size:15px}
+  .s-silk .bt span{padding:11px 22px;border-radius:99px;background:#17171b;color:#fff}
+  .s-silk .bt span+span{background:rgba(255,255,255,.6);color:#17171b}
+
+  /* 7 网格 */
+  .s-grid{height:560px;background:#fafaf8;color:#111}
+  .s-grid .nav{color:#555}
+  .s-grid .nav b{color:#111;font-size:20px}
+  .s-grid h2{position:absolute;left:52px;top:84px;font-size:190px;line-height:1;font-weight:800;letter-spacing:-.06em}
+  .s-grid h2 sup{font-size:40px;font-weight:500;letter-spacing:0;vertical-align:top;position:relative;top:24px;margin-left:10px}
+  .s-grid p{position:absolute;right:56px;top:150px;width:330px;font-size:16px;color:#555}
+  .s-grid .tl{position:absolute;left:56px;right:56px;top:320px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .s-grid .tl div{height:180px;border-radius:4px;position:relative;overflow:hidden;font-weight:700}
+  .s-grid .tl small{position:absolute;left:16px;bottom:14px;font-size:13px;font-weight:500}
+</style>
+</head>
+<body>
+
+<!-- 纸上网页共用的滤镜（多份拷贝都引用这一份） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="fxNeon" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="fxBrain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="turbulence" baseFrequency="0.032" numOctaves="4" seed="11"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .42  0 0 0 0 .40  0 0 0 0 .50  -3.4 0 0 0 1.05"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<main class="copy" id="copy">
+  <header class="who">
+    <span class="ava">屿</span>
+    <span><b>周屿 Zhou Yu</b><em>网页设计 + 开发</em></span>
+  </header>
+  <h1>做能赢得信任、<br>带来增长的网站</h1>
+  <p class="lede">帮早期团队把产品讲清楚：第一屏让人看懂，<br>第二屏让人行动。从设计、开发到上线，<br>一个人从头做到尾。</p>
+  <div class="cta">
+    <a class="btn" href="#">预约 20 分钟沟通</a>
+    <a class="mail" href="mailto:hello@example.com">hello@example.com</a>
+  </div>
+  <section class="clients">
+    <p>合作过 30+ 团队与工作室<br><span>（含直接合作，以及通过创意伙伴的合作）</span></p>
+    <div class="logos" id="logos"></div>
+    <small>© 2026 出片机 · 动效复刻练习，人物与品牌均为虚构</small>
+  </section>
+</main>
+
+<div id="rig">
+  <!-- 后层：线缆（被侧板、电机挡住两端） -->
+  <svg width="575" height="720" viewBox="0 0 575 720" aria-hidden="true">
+    <g fill="none" stroke-linecap="round">
+      <!-- 左上那根粗黑线 -->
+      <path d="M8 -30 C4 70 34 150 96 190 S150 222 160 232" stroke="#151515" stroke-width="11"/>
+      <path d="M6 -30 C2 70 32 148 94 187 S148 219 158 229" stroke="#6d6d6a" stroke-width="2.2" opacity=".55" transform="translate(-2.2,-1.6)"/>
+      <!-- 电机底下红黑两根 -->
+      <path d="M124 360 C120 410 128 444 162 455" stroke="#a3221b" stroke-width="5"/>
+      <path d="M123 360 C119 410 127 443 161 453" stroke="#e0675e" stroke-width="1.2" opacity=".6"/>
+      <path d="M136 360 C134 404 141 432 164 442" stroke="#121212" stroke-width="5"/>
+      <path d="M135 360 C133 404 140 431 163 440" stroke="#7a7a77" stroke-width="1.2" opacity=".6"/>
+      <!-- 右侧一束线，出去绕一圈再回到侧板 -->
+      <path d="M486 166 C540 170 560 228 556 300 S548 440 486 462" stroke="#8d8d8a" stroke-width="5.5"/>
+      <path d="M486 176 C534 182 550 236 547 302 S540 432 486 452" stroke="#676764" stroke-width="5.5"/>
+      <path d="M486 186 C528 194 541 244 538 304 S531 425 486 444" stroke="#262624" stroke-width="5"/>
+      <path d="M486 196 C521 205 532 252 529 306 S522 418 486 436" stroke="#a3221b" stroke-width="4.6"/>
+      <path d="M486 206 C515 216 523 258 520 308 S514 412 486 428" stroke="#9d9d9a" stroke-width="4.6"/>
+      <g stroke="#e9e9e6" stroke-width="1.1" opacity=".55">
+        <path d="M486 164 C540 168 559 226 555 298 S547 438 486 460"/>
+        <path d="M486 174 C534 180 549 234 546 300 S539 430 486 450"/>
+        <path d="M486 204 C515 214 522 256 519 306 S513 410 486 426"/>
+      </g>
+      <path d="M486 194 C521 203 531 250 528 304 S521 416 486 434" stroke="#ec7a70" stroke-width="1.1" opacity=".6"/>
+    </g>
+  </svg>
+
+  <div id="paper">
+    <div id="strip"></div>
+    <div class="blur"></div>
+    <div class="fog"></div>
+    <div class="edge l"></div><div class="edge r"></div>
+  </div>
+
+  <!-- 前层：侧板、辊子、电机、电路板 -->
+  <svg id="front" width="575" height="720" viewBox="0 0 575 720">
+    <defs>
+      <linearGradient id="gRoll" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2b2c29"/><stop offset=".1" stop-color="#5b5d59"/><stop offset=".27" stop-color="#cbccc7"/>
+        <stop offset=".4" stop-color="#a3a49f"/><stop offset=".64" stop-color="#777873"/><stop offset=".86" stop-color="#3a3732"/>
+        <stop offset="1" stop-color="#13100d"/>
+      </linearGradient>
+      <linearGradient id="gPulley" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#3c3d3a"/><stop offset=".18" stop-color="#8b8c87"/><stop offset=".36" stop-color="#d6d7d2"/>
+        <stop offset=".55" stop-color="#9c9d98"/><stop offset=".82" stop-color="#5a5b57"/><stop offset="1" stop-color="#262623"/>
+      </linearGradient>
+      <linearGradient id="gPlateL" x1="0" x2="1">
+        <stop offset="0" stop-color="#a3a49f"/><stop offset=".09" stop-color="#6b6c67"/><stop offset=".2" stop-color="#8c8d88"/>
+        <stop offset=".55" stop-color="#7f807b"/><stop offset=".86" stop-color="#62635e"/><stop offset="1" stop-color="#363633"/>
+      </linearGradient>
+      <linearGradient id="gPlateR" x1="0" x2="1">
+        <stop offset="0" stop-color="#363633"/><stop offset=".12" stop-color="#666762"/><stop offset=".45" stop-color="#80817c"/>
+        <stop offset=".8" stop-color="#8e8f8a"/><stop offset=".91" stop-color="#6b6c67"/><stop offset="1" stop-color="#a7a8a3"/>
+      </linearGradient>
+      <linearGradient id="gTopShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset=".22" stop-color="#000" stop-opacity=".12"/>
+        <stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset=".93" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000" stop-opacity=".25"/>
+      </linearGradient>
+      <linearGradient id="gMotor" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#454643"/><stop offset=".12" stop-color="#8a8b86"/><stop offset=".3" stop-color="#bebfba"/>
+        <stop offset=".46" stop-color="#9fa09b"/><stop offset=".78" stop-color="#787974"/><stop offset="1" stop-color="#3a3a37"/>
+      </linearGradient>
+      <linearGradient id="gMotorX" x1="0" x2="1">
+        <stop offset="0" stop-color="#000" stop-opacity=".35"/><stop offset=".18" stop-color="#000" stop-opacity="0"/>
+        <stop offset=".75" stop-color="#fff" stop-opacity=".06"/><stop offset="1" stop-color="#000" stop-opacity=".25"/>
+      </linearGradient>
+      <radialGradient id="gCap" cx=".65" cy=".38" r=".8">
+        <stop offset="0" stop-color="#9c9d98"/><stop offset=".6" stop-color="#5d5e5a"/><stop offset="1" stop-color="#2c2c29"/>
+      </radialGradient>
+      <radialGradient id="gHole" cx=".5" cy=".4" r=".6">
+        <stop offset="0" stop-color="#050505"/><stop offset=".7" stop-color="#171615"/><stop offset="1" stop-color="#4a4946"/>
+      </radialGradient>
+      <radialGradient id="gScrew" cx=".38" cy=".32" r=".75">
+        <stop offset="0" stop-color="#e2e3de"/><stop offset=".5" stop-color="#8e8f8a"/><stop offset="1" stop-color="#3b3b38"/>
+      </radialGradient>
+      <radialGradient id="gCapa" cx=".4" cy=".35" r=".7">
+        <stop offset="0" stop-color="#f6f6f3"/><stop offset=".55" stop-color="#c4c4bf"/><stop offset="1" stop-color="#7d7d78"/>
+      </radialGradient>
+      <linearGradient id="gPcb" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#1c4a47"/><stop offset=".5" stop-color="#28625e"/><stop offset="1" stop-color="#1f524f"/>
+      </linearGradient>
+      <linearGradient id="gKnob" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#4b4c49"/><stop offset=".3" stop-color="#d0d1cc"/><stop offset=".6" stop-color="#8d8e89"/><stop offset="1" stop-color="#2f2f2c"/>
+      </linearGradient>
+      <filter id="brush" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.85 0.012" numOctaves="2" seed="4"/>
+        <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.6 0 0 0 -.55"/>
+        <feComposite in2="SourceGraphic" operator="in"/>
+      </filter>
+      <filter id="ledGlow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="2.4"/></filter>
+      <clipPath id="clipPulley"><rect x="118" y="74" width="42" height="78" rx="9"/></clipPath>
+    </defs>
+
+    <!-- 侧板 -->
+    <g>
+      <path d="M160 74H188Q196 74 196 82V482Q196 490 188 490H160Q152 490 152 482V82Q152 74 160 74Z" fill="url(#gPlateL)"/>
+      <path d="M160 74H188Q196 74 196 82V482Q196 490 188 490H160Q152 490 152 482V82Q152 74 160 74Z" fill="#fff" filter="url(#brush)" opacity=".22"/>
+      <path d="M160 74H188Q196 74 196 82V482Q196 490 188 490H160Q152 490 152 482V82Q152 74 160 74Z" fill="url(#gTopShade)"/>
+      <path d="M154 86V480" stroke="#d3d4cf" stroke-width="1" opacity=".55"/>
+      <path d="M456 74H486Q494 74 494 82V482Q494 490 486 490H456Q448 490 448 482V82Q448 74 456 74Z" fill="url(#gPlateR)"/>
+      <path d="M456 74H486Q494 74 494 82V482Q494 490 486 490H456Q448 490 448 482V82Q448 74 456 74Z" fill="#fff" filter="url(#brush)" opacity=".22"/>
+      <path d="M456 74H486Q494 74 494 82V482Q494 490 486 490H456Q448 490 448 482V82Q448 74 456 74Z" fill="url(#gTopShade)"/>
+      <path d="M492 86V480" stroke="#d3d4cf" stroke-width="1" opacity=".5"/>
+      <!-- 孔、螺丝 -->
+      <circle cx="172" cy="418" r="8" fill="url(#gHole)"/><path d="M165 422a8 8 0 0 0 14 0" fill="none" stroke="#c9cac5" stroke-width=".9" opacity=".7"/>
+      <circle cx="472" cy="418" r="8" fill="url(#gHole)"/><path d="M465 422a8 8 0 0 0 14 0" fill="none" stroke="#c9cac5" stroke-width=".9" opacity=".7"/>
+      <g id="screws">
+        <circle cx="164" cy="189" r="4.4" fill="url(#gScrew)"/><path d="M161 189h6" stroke="#2a2a28" stroke-width="1"/>
+        <circle cx="481" cy="189" r="4.4" fill="url(#gScrew)"/><path d="M478 189h6" stroke="#2a2a28" stroke-width="1"/>
+        <circle cx="164" cy="470" r="3.6" fill="url(#gScrew)"/><circle cx="481" cy="470" r="3.6" fill="url(#gScrew)"/>
+        <rect x="474" y="203" width="14" height="13" rx="3" fill="url(#gKnob)"/>
+      </g>
+      <!-- 右板竖排刻字 -->
+      <g font-family="'JetBrains Mono',Menlo,Consolas,monospace" font-size="10.5" letter-spacing="1.6" text-anchor="middle">
+        <text transform="translate(474.6 313) rotate(-90)" fill="#c9cac5" opacity=".45">SCROLL TO EXPLORE</text>
+        <text transform="translate(474 312.4) rotate(-90)" fill="#2f2e2b" opacity=".75">SCROLL TO EXPLORE</text>
+      </g>
+    </g>
+
+    <!-- 左边那颗小旋钮 -->
+    <rect x="128" y="174" width="26" height="27" rx="3" fill="url(#gKnob)"/>
+    <ellipse cx="129" cy="187.5" rx="4" ry="13.5" fill="#6c6d68"/>
+    <ellipse cx="129" cy="187.5" rx="2" ry="6" fill="#3b3b38"/>
+
+    <!-- 电机 -->
+    <g id="motor">
+      <rect x="140" y="252" width="30" height="86" rx="3" fill="url(#gPlateL)"/>
+      <rect x="140" y="252" width="30" height="86" rx="3" fill="#000" opacity=".15"/>
+      <circle cx="160" cy="264" r="2.6" fill="url(#gScrew)"/><circle cx="160" cy="326" r="2.6" fill="url(#gScrew)"/>
+      <rect x="72" y="219" width="82" height="154" rx="6" fill="url(#gMotor)"/>
+      <rect x="72" y="219" width="82" height="154" rx="6" fill="url(#gMotorX)"/>
+      <rect x="72" y="219" width="82" height="154" rx="6" fill="#fff" filter="url(#brush)" opacity=".12"/>
+      <path d="M86 221V371M90 221V371M146 221V371" stroke="#2c2c2a" stroke-width="1.1" opacity=".55"/>
+      <path d="M87.2 221V371M91.2 221V371M147.2 221V371" stroke="#dcddd8" stroke-width=".8" opacity=".45"/>
+      <ellipse cx="73" cy="296" rx="11" ry="77" fill="url(#gCap)"/>
+      <ellipse cx="70" cy="296" rx="4" ry="16" fill="#2d2d2a"/>
+      <rect x="58" y="258" width="10" height="11" rx="1.5" fill="#cfd0cb" stroke="#5a5b57" stroke-width=".8"/>
+      <rect x="58" y="326" width="10" height="11" rx="1.5" fill="#cfd0cb" stroke="#5a5b57" stroke-width=".8"/>
+      <!-- 刻在电机上的三个联系方式图标：信封 / 相机 / 地球 -->
+      <a class="ico" href="mailto:hello@example.com" aria-label="邮件"><title>邮件</title>
+        <rect x="96" y="238" width="24" height="24" fill="transparent"/>
+        <g fill="none" stroke-width="2.3" stroke-linejoin="round" transform="translate(0 .8)" stroke="#e1e2dd" opacity=".45">
+          <rect x="97.5" y="242.5" width="21" height="15" rx="1.5"/><path d="M98 244l10 7.5 10-7.5"/></g>
+        <g class="ink" fill="none" stroke-width="2.3" stroke-linejoin="round" stroke="#3a3a37">
+          <rect x="97.5" y="242.5" width="21" height="15" rx="1.5"/><path d="M98 244l10 7.5 10-7.5"/></g>
+      </a>
+      <a class="ico" href="#" aria-label="作品集"><title>作品集</title>
+        <rect x="96" y="280" width="24" height="24" fill="transparent"/>
+        <g fill="none" stroke-width="2.3" transform="translate(0 .8)" stroke="#e1e2dd" opacity=".45">
+          <rect x="97" y="283.5" width="22" height="17" rx="3.5"/><circle cx="108" cy="292" r="4.6"/></g>
+        <g class="ink" fill="none" stroke-width="2.3" stroke="#3a3a37">
+          <rect x="97" y="283.5" width="22" height="17" rx="3.5"/><circle cx="108" cy="292" r="4.6"/></g>
+        <circle class="inkf" cx="115" cy="287.4" r="1.3" fill="#3a3a37"/>
+      </a>
+      <a class="ico" href="#" aria-label="个人网站"><title>个人网站</title>
+        <rect x="96" y="322" width="24" height="24" fill="transparent"/>
+        <g fill="none" stroke-width="2.1" transform="translate(0 .8)" stroke="#e1e2dd" opacity=".45">
+          <circle cx="108" cy="334" r="10.5"/><ellipse cx="108" cy="334" rx="4.6" ry="10.5"/><path d="M97.5 334h21"/></g>
+        <g class="ink" fill="none" stroke-width="2.1" stroke="#3a3a37">
+          <circle cx="108" cy="334" r="10.5"/><ellipse cx="108" cy="334" rx="4.6" ry="10.5"/><path d="M97.5 334h21"/></g>
+      </a>
+    </g>
+
+    <!-- 辊子 -->
+    <g id="roller">
+      <rect x="158" y="91" width="334" height="45" rx="5" fill="url(#gRoll)"/>
+      <rect x="158" y="91" width="334" height="45" rx="5" fill="#fff" filter="url(#brush)" opacity=".1"/>
+      <path d="M162 103.5H488" stroke="#f1f2ed" stroke-width="1" opacity=".35"/>
+      <g font-family="'JetBrains Mono',Menlo,Consolas,monospace" font-size="13.5" letter-spacing="1.2" text-anchor="middle">
+        <text x="325" y="119.6" fill="#e3e4df" opacity=".3">DESIGN | CODE | MOTION | SHIP</text>
+        <text x="325" y="118.8" fill="#34332f" opacity=".82">DESIGN | CODE | MOTION | SHIP</text>
+      </g>
+      <!-- 左端滑轮：表面刻线会随走纸转动 -->
+      <rect x="118" y="74" width="42" height="78" rx="9" fill="url(#gPulley)"/>
+      <g clip-path="url(#clipPulley)">
+        <g id="knurl" stroke-width="1"></g>
+      </g>
+      <path d="M126 76V150M152 76V150" stroke="#1e1e1c" stroke-width="1" opacity=".45"/>
+      <rect x="107" y="101" width="12" height="18" rx="2.5" fill="url(#gKnob)"/>
+      <rect x="488" y="78" width="13" height="70" rx="4" fill="url(#gPulley)"/>
+      <rect x="500" y="103" width="8" height="14" rx="2" fill="url(#gKnob)"/>
+    </g>
+
+    <!-- 电路板（上沿伸出视口） -->
+    <g id="pcb">
+      <rect x="172" y="-46" width="306" height="126" rx="5" fill="url(#gPcb)"/>
+      <g fill="none" stroke="#3f8780" stroke-width="1.3" opacity=".55">
+        <path d="M232 -10H290V20H300"/><path d="M232 0H282V30H300"/><path d="M240 50H292V58"/><path d="M200 74V54H226"/>
+        <path d="M300 46H455"/><path d="M462 -20V40"/>
+      </g>
+      <path d="M300 44.5H458" stroke="#e9f2ef" stroke-width="1.1" opacity=".8"/>
+      <path d="M380 52H470" stroke="#e9f2ef" stroke-width="1" opacity=".55"/>
+      <!-- 芯片 -->
+      <rect x="300" y="-46" width="156" height="78" rx="2" fill="#121212"/>
+      <rect x="300" y="-46" width="156" height="78" rx="2" fill="url(#gTopShade)" opacity=".5"/>
+      <g fill="#b8b8b3" id="pins"></g>
+      <circle cx="311" cy="21" r="3" fill="#1d1d1d" stroke="#2a2a2a"/>
+      <!-- 排针 -->
+      <rect x="292" y="63" width="164" height="13" rx="1" fill="#141414"/>
+      <rect x="232" y="63" width="52" height="13" rx="1" fill="#141414"/>
+      <g fill="#3a3a38" id="hdr"></g>
+      <!-- 电源座 -->
+      <rect x="164" y="20" width="62" height="47" rx="3" fill="#161616"/>
+      <rect x="164" y="20" width="62" height="10" rx="3" fill="#2c2c2c"/>
+      <ellipse cx="226" cy="43" rx="5" ry="15" fill="#0b0b0b" stroke="#3a3a3a"/>
+      <!-- 电容 -->
+      <circle cx="252" cy="40" r="15.5" fill="url(#gCapa)" stroke="#6d6d68" stroke-width="1"/>
+      <circle cx="285" cy="40" r="15.5" fill="url(#gCapa)" stroke="#6d6d68" stroke-width="1"/>
+      <g font-family="Inter,Arial,sans-serif" font-size="6.4" font-weight="600" fill="#6a6a66" text-anchor="middle">
+        <text x="252" y="42.2">100µ</text><text x="285" y="42.2">16V</text>
+      </g>
+      <!-- 零碎贴片 -->
+      <rect x="244" y="-34" width="10" height="5" fill="#c9c9c3"/><rect x="262" y="-34" width="10" height="5" fill="#c9c9c3"/>
+      <rect x="208" y="-24" width="14" height="22" rx="1" fill="#e9e9e4"/>
+      <rect x="276" y="56" width="11" height="5" fill="#5a3a24"/>
+      <!-- 安装孔 -->
+      <circle cx="466" cy="49" r="7" fill="#fdfbfc" stroke="#bfc9c5" stroke-width="2"/>
+      <!-- 指示灯：走纸越快越亮 -->
+      <rect x="430" y="55" width="7" height="4" rx="1" fill="#3a5a3a"/>
+      <circle id="ledGlowDot" cx="433.5" cy="57" r="4" fill="#7dff8a" filter="url(#ledGlow)" opacity=".4"/>
+      <rect id="led" x="430" y="55" width="7" height="4" rx="1" fill="#9dffab" opacity=".5"/>
+    </g>
+  </svg>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   出片机 —— 一台把作品集网页一张张「印」出来的小机器。
+   纸带匀速从辊子底下吐出来（参照视频量出来约 19px/s @720p），
+   滚轮 / 拖拽可以快进、倒带；鼠标停在纸上会放慢，方便看。
+   左下角合作方 logo 每 4 秒一组，从左到右依次虚化消失、再依次显影。
+   ════════════════════════════════════════════════════════════ */
+
+const BASE_SPEED = 19;        // 设计坐标 px/s（720 高画面）
+const HOVER_SPEED = 5;
+const LOGO_PERIOD = 4000;
+const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const $ = s => document.querySelector(s);
+const rig = $('#rig'), paper = $('#paper'), strip = $('#strip'), copyEl = $('#copy');
+
+/* ───────── 一点工具 ───────── */
+const f1 = n => Math.round(n * 10) / 10;
+function rtri(cx, cy, R, rot, k) {           // 圆角三角形（霓虹管的形状）
+  const P = [0, 1, 2].map(i => { const a = rot + i * 2 * Math.PI / 3; return [cx + R * Math.cos(a), cy + R * Math.sin(a)]; });
+  let d = '';
+  for (let i = 0; i < 3; i++) {
+    const p = P[i], a = P[(i + 2) % 3], b = P[(i + 1) % 3];
+    const p1 = [p[0] + (a[0] - p[0]) * k, p[1] + (a[1] - p[1]) * k];
+    const p2 = [p[0] + (b[0] - p[0]) * k, p[1] + (b[1] - p[1]) * k];
+    d += (i ? 'L' : 'M') + f1(p1[0]) + ' ' + f1(p1[1]) + 'Q' + f1(p[0]) + ' ' + f1(p[1]) + ' ' + f1(p2[0]) + ' ' + f1(p2[1]);
+  }
+  return d + 'Z';
+}
+function silk() {                             // 丝绸那张：一组相位错开的正弦线
+  let s = '';
+  for (let i = 0; i < 52; i++) {
+    const t = i / 51, y0 = 70 + i * 6.2, amp = 70 + 90 * Math.sin(t * Math.PI);
+    let d = '';
+    for (let x = -40; x <= 1320; x += 20) {
+      const y = y0 + amp * Math.sin(x / 300 + t * 1.6) * 0.55 + 46 * Math.sin(x / 140 - t * 2.4) * (0.3 + t * 0.7);
+      d += (x === -40 ? 'M' : 'L') + x + ' ' + f1(y);
+    }
+    const lit = Math.pow(Math.sin(t * Math.PI), 1.6);
+    s += `<path d="${d}" fill="none" stroke="${i % 7 === 3 ? 'rgba(40,42,52,.28)' : 'rgba(255,255,255,' + (0.18 + lit * 0.72).toFixed(2) + ')'}" stroke-width="${(1 + lit * 1.8).toFixed(2)}"/>`;
+  }
+  return s;
+}
+
+/* ───────── 纸上的七张网页（原创样稿，品牌名都是编的） ───────── */
+const CARDS = [
+  { h: 920, html: `<div class="site s-neon">
+    <div class="limb"></div>
+    <svg class="rings" width="780" height="470" viewBox="0 0 780 470">${
+      [[170, 260, 150, -0.35], [420, 280, 168, 0.85], [650, 200, 138, -0.05]].map(([x, y, R, r]) => {
+        const d = rtri(x, y, R, r, .42), d2 = rtri(x, y, R * .8, r, .42);
+        return `<path d="${d}" class="r0" filter="url(#fxNeon)"/><path d="${d}" class="r1"/><path d="${d2}" class="r3"/><path d="${d}" class="r2"/>`;
+      }).join('')}</svg>
+    <div class="nav"><b>orbitly</b><span class="ln"><i>Work</i><i>Studio</i><i>Pricing</i><i>Journal</i></span><span class="pl">Let’s talk</span></div>
+    <h2 class="serif">Make the launch<br><em>impossible to miss.</em></h2>
+    <p>We plan, film and ship launch campaigns for software teams. One crew, one timeline, zero hand-offs.</p>
+    <div class="dot"></div>
+    <div class="stats"><div><b>120M+</b><span>Organic views</span></div><div><b>$14M</b><span>Raised by clients</span></div><div><b>1,800+</b><span>Creators</span></div></div>
+    <div class="tiles"><div class="t1"></div><div class="t2"></div></div></div>` },
+
+  { h: 800, html: `<div class="site s-orb">
+    <div class="nav"><b>Lucent</b><span class="ln"><i>Research</i><i>Models</i><i>Safety</i><i>Company</i></span><span class="pl">Try it</span></div>
+    <div class="orb"><svg width="400" height="400"><circle cx="200" cy="200" r="190" fill="#fff" filter="url(#fxBrain)"/></svg></div>
+    <h2>Reasoning,<br>made readable<br>by <i>people.</i></h2>
+    <div class="bt"><span>Get started</span><span>Read the paper</span></div>
+    <p>Models that show their work — every step inspectable, every answer traceable back to a source you can open.</p></div>` },
+
+  { h: 900, html: `<div class="site s-prism">
+    <div class="fan">${
+      [-66, -48, -30, -12, 6, 24, 42, 60].map((a, i) => {
+        const c = [['255,128,60', '196,80,255'], ['255,170,80', '120,90,255'], ['255,96,70', '80,140,255'], ['255,200,120', '210,90,255'],
+                   ['255,120,90', '90,120,255'], ['255,150,60', '160,80,255'], ['255,110,60', '70,160,255'], ['255,190,100', '140,100,255']][i];
+        return `<i style="transform:rotate(${a}deg);background:linear-gradient(to top,rgba(${c[0]},0) 4%,rgba(${c[0]},.55) 38%,rgba(${c[1]},.5) 72%,rgba(${c[1]},0))"></i>`;
+      }).join('')}</div>
+    <div class="nav"><b>◇ Ledgerly</b><span class="ln"><i>Product</i><i>Security</i><i>Pricing</i></span><span>Sign in</span></div>
+    <h2>Own your money,<br>not the fine print</h2>
+    <div class="sub">Join the waitlist — accounts open in the spring.</div>
+    <div class="go">Get early access</div>
+    <div class="foot"><div class="l"><b>◇ Ledgerly</b><p>A calmer way to hold, send and grow money. No hidden fees, no lock-ins, no surprises in the small print.</p></div>
+      <div class="c"><div>Home<br>About<br>Pricing<br>Roadmap</div><div>Team<br>Blog<br>FAQ<br>Contact</div><div>Newsletter<br>Community<br>Status<br>Press</div></div></div>
+    <div class="copyr"><span>© 2026 Ledgerly Labs</span><span>Privacy · Terms</span></div></div>` },
+
+  { h: 900, html: `<div class="site s-retro">
+    <div class="pill"><b>Pudding</b><span><i>Work</i><i>Process</i><i>Prices</i><i>About</i></span><em>Start a project</em></div>
+    <svg class="cup" width="200" height="260" viewBox="0 0 200 260" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M40 90L60 232Q100 246 140 232L160 90Z" fill="#f4c430"/><ellipse cx="100" cy="90" rx="60" ry="14" fill="#fff"/>
+      <path d="M58 140Q100 156 146 140" stroke-width="4"/><path d="M80 62q-12-18 0-36M105 58q-12-18 0-36M128 62q-12-18 0-36" stroke-width="4"/>
+      <path d="M2 172Q30 150 52 160L58 202Q30 216 2 206" fill="#fff"/></svg>
+    <div class="mac"><div class="scr"><div>
+      <svg width="74" height="70" viewBox="0 0 74 70" fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="37" cy="38" r="24" fill="#fff"/><path d="M15 30Q20 8 37 10Q56 8 60 30Q50 18 37 22Q24 18 15 30Z" fill="#1a1a1a"/>
+        <circle cx="29" cy="38" r="2.4" fill="#1a1a1a"/><circle cx="45" cy="38" r="2.4" fill="#1a1a1a"/><path d="M29 49Q37 55 45 49"/></svg>
+      <span>Ads that look hand-made.<br><b>Because they are.</b></span></div></div><div class="slot"></div></div>
+    <div class="base"></div>
+    <svg class="face" width="200" height="230" viewBox="0 0 200 230" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+      <circle cx="100" cy="128" r="66" fill="#fff"/><path d="M42 98L52 50L74 80L92 36L110 76L134 40L146 84L168 64L158 104Z" fill="#111"/>
+      <circle cx="78" cy="126" r="6" fill="#111"/><circle cx="122" cy="126" r="6" fill="#111"/><path d="M72 154Q100 196 128 154Z" fill="#111"/>
+      <path d="M8 120l18 4M14 80l18 14M186 120l-16 4M188 168l-18-8"/></svg>
+    <h2 class="serif">Ads that feel hand-made.</h2>
+    <div class="sub">Illustrated campaigns for brands that refuse to look like everyone else.</div>
+    <div class="bt"><span>See the work</span><span>Our prices</span></div></div>` },
+
+  { h: 860, html: `<div class="site s-col">
+    <div class="nav"><span>Unstuck®</span><span>Issues</span><span>Archive</span><span>Events</span><span>Shop</span><span>Subscribe</span></div>
+    <h2>NOTES FROM<br>THE MESSY<br>MIDDLE</h2>
+    <div class="chips"><b>Subscribe free</b><span>Every other Sunday</span><span>· 41k readers</span></div>
+    <div class="folder"></div>
+    <div class="sheet"><b>FIELD NOTES<br>VOL. 03</b><small>On shipping before you feel ready, and other bad ideas that work.</small></div>
+    <div class="pola"><div></div></div>
+    <div class="sticky">call Mia re:<br>launch copy ✶<br>— before fri!!</div>
+    <div class="ticket">ADMIT ONE<br>№ 0472 · ROW F</div>
+    <svg class="scrib" width="1280" height="860" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M930 150c30-50 80-50 70 4s-60 54-22 78 104-20 126-64"/><path d="M1060 300l30 10-12 28"/></svg></div>` },
+
+  { h: 760, html: `<div class="site s-silk">
+    <svg class="waves" width="1280" height="760">${silk()}</svg>
+    <div class="nav"><b>Northlight</b><span class="ln"><i>Approach</i><i>Cases</i><i>Team</i></span><span class="pl">Book a call</span></div>
+    <h2>Strategy you<br>can actually ship.</h2>
+    <p>Positioning, messaging and a site that says it — delivered in six weeks, not six quarters.</p>
+    <div class="bt"><span>Book a call</span><span>See cases</span></div></div>` },
+
+  { h: 560, html: `<div class="site s-grid">
+    <div class="nav"><b>Fieldwork</b><span class="ln"><i>Index</i><i>Info</i><i>Contact</i></span><span>EN / 中</span></div>
+    <h2>Index<sup>(24)</sup></h2>
+    <p>Identity systems, type and small software for independent shops, schools and festivals. Based between cities.</p>
+    <div class="tl">
+      <div style="background:#ff4b2b;color:#fff;font-size:120px;padding:4px 18px">A</div>
+      <div style="background:#111;background-image:repeating-linear-gradient(90deg,#111 0 14px,#333 14px 16px)"><small style="color:#fff">Tempo Festival</small></div>
+      <div style="background:#e7e3da"><small>Kiosk Type</small><span style="position:absolute;left:96px;top:36px;width:90px;height:90px;border-radius:50%;background:#2f5bff"></span></div>
+      <div style="background:#ffd23f;font-size:44px;padding:16px 18px;line-height:1">Open<br>Days</div>
+    </div></div>` },
+];
+
+/* ───────── 合作方（编的名字 + 简单的字标） ───────── */
+const G = {
+  half: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 2a8 8 0 0 1 0 16z" fill="currentColor"/></svg>',
+  wave: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 7q4-4 8 0t8 0M2 13q4-4 8 0t8 0"/></svg>',
+  ring: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="3.5"/></svg>',
+  sq: '<svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2" fill="currentColor"/><path d="M6 13l4-6 4 6" fill="none" stroke="#fdfbfc" stroke-width="1.8"/></svg>',
+  leaf: '<svg viewBox="0 0 20 20"><path d="M3 17C3 8 9 3 17 3c0 8-5 14-14 14z" fill="currentColor"/><path d="M4 16L13 7" stroke="#fdfbfc" stroke-width="1.5"/></svg>',
+  cloud: '<svg viewBox="0 0 20 20"><path d="M6 15a4 4 0 0 1 0-8 5 5 0 0 1 9 1 3.5 3.5 0 0 1 0 7z" fill="currentColor"/></svg>',
+  bars: '<svg viewBox="0 0 20 20" fill="currentColor"><rect x="3" y="9" width="3" height="8"/><rect x="8.5" y="5" width="3" height="12"/><rect x="14" y="2" width="3" height="15"/></svg>',
+  dot: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="4" fill="currentColor"/><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  tri: '<svg viewBox="0 0 20 20"><path d="M10 3l8 14H2z" fill="currentColor"/></svg>',
+};
+const LOGOS = [
+  [`${G.half}<b style="font-size:1.05rem;font-weight:700;letter-spacing:-.02em">Halden</b>`,
+   `${G.wave}<b style="font-size:.72rem;font-weight:600;letter-spacing:.16em">NORTHWAVE</b>`,
+   `<i style="font:italic 1.2rem Georgia,serif">Kiln&amp;Co</i>`,
+   `<b style="font-size:1.15rem;font-weight:800;letter-spacing:-.04em">parcel.</b>`],
+  [`${G.ring}<b style="font-size:1.05rem;font-weight:600">Orbel</b>`,
+   `<b style="font:600 .75rem 'JetBrains Mono',Menlo,monospace;letter-spacing:.1em">MOSSWORK</b>`,
+   `<span style="font:1.08rem Georgia,serif;letter-spacing:.01em">Tidepool</span>`,
+   `${G.sq}<b style="font-size:1rem;font-weight:700;letter-spacing:-.01em">Quarry</b>`],
+  [`${G.leaf}<span style="font-size:1.05rem;font-weight:500">Plume</span>`,
+   `<b style="font-size:.7rem;font-weight:800;letter-spacing:.14em">BRISK/STUDIO</b>`,
+   `<i style="font:italic 1.3rem 'Snell Roundhand','Brush Script MT',Georgia,cursive">Ondine</i>`,
+   `${G.cloud}<b style="font-size:1.05rem;font-weight:700">Nimbo</b>`],
+  [`${G.bars}<span style="font-size:1.02rem;font-weight:400;letter-spacing:-.01em">Fernhaus</span>`,
+   `<span style="font:.8rem Georgia,serif;letter-spacing:.12em">SALT—MARSH</span>`,
+   `${G.dot}<b style="font-size:1.05rem;font-weight:600">kokoro</b>`,
+   `${G.tri}<b style="font-size:1.05rem;font-weight:800;font-style:italic;letter-spacing:-.02em">Vantlo</b>`],
+];
+
+/* ───────── 纸带：一套七张，叠几份，取模循环 ───────── */
+let setH = 0, copies = 0, paperH = 586, scale = 1;
+const SET_HTML = CARDS.map(c => `<div class="card" style="height:${c.h * 0.2}px">${c.html}</div>`).join('');
+CARDS.forEach(c => setH += c.h * 0.2 + 3);
+
+function ensureCopies() {
+  const need = 1 + Math.ceil(paperH / setH);
+  while (copies < need) { strip.insertAdjacentHTML('beforeend', SET_HTML); copies++; }
+}
+
+/* ───────── 布局：机器按视频坐标搭好，整体缩放 ───────── */
+function layout() {
+  const W = innerWidth, H = innerHeight, narrow = W < 720;
+  document.body.classList.toggle('narrow', narrow);
+  let x, y;
+  if (!narrow) {
+    scale = Math.min(H / 720, W * 0.56 / 575);
+    const rw = 575 * scale;
+    x = W / 2 + Math.max(0, (W / 2 - rw) / 2);
+    x = Math.min(x, W - rw);
+    y = 0;
+  } else {
+    const top = copyEl.getBoundingClientRect().bottom;
+    scale = Math.min(W * 1.02 / 575, Math.max(0.42, (H - top) / 600));
+    x = W / 2 - 322 * scale;
+    y = top + 52 * scale;
+  }
+  rig.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
+  paperH = Math.max(586, Math.ceil((H - y) / scale - 134) + 2);
+  paper.style.height = paperH + 'px';
+  ensureCopies();
+}
+addEventListener('resize', layout);
+
+/* ───────── 机器上的小零件 ───────── */
+(function parts() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const pins = $('#pins'), hdr = $('#hdr'), knurl = $('#knurl');
+  for (let x = 305; x < 452; x += 10.4) {
+    const r = document.createElementNS(NS, 'rect');
+    Object.entries({ x: x.toFixed(1), y: 32, width: 4.6, height: 6, fill: '#b8b8b3' }).forEach(([k, v]) => r.setAttribute(k, v));
+    pins.appendChild(r);
+  }
+  for (const [a, b] of [[296, 452], [236, 282]]) for (let x = a; x < b; x += 9.2) {
+    const r = document.createElementNS(NS, 'rect');
+    Object.entries({ x: x.toFixed(1), y: 66.5, width: 5, height: 5, fill: '#3a3a38' }).forEach(([k, v]) => r.setAttribute(k, v));
+    hdr.appendChild(r);
+  }
+  // 滑轮表面的横纹：一圈 16 条，随走纸转动（投影到正面后越靠上下边越密，像圆柱）
+  for (let i = 0; i < 16; i++) {
+    const l = document.createElementNS(NS, 'path');
+    l.setAttribute('stroke', i % 2 ? '#2a2a28' : '#e8e9e4');
+    l.setAttribute('opacity', i % 2 ? '.35' : '.3');
+    knurl.appendChild(l);
+  }
+})();
+const knurlLines = [...document.querySelectorAll('#knurl path')];
+function drawKnurl(phase) {
+  // 圆柱侧面：角度均匀 → 投影后 y = cy + r·sin(θ)
+  const cy = 113, r = 40;
+  knurlLines.forEach((l, i) => {
+    let th = ((i / knurlLines.length) * Math.PI * 2 + phase) % (Math.PI * 2);
+    if (th > Math.PI) { l.setAttribute('d', ''); return; }     // 背面的不画
+    const y = cy - r * Math.cos(th);
+    l.setAttribute('d', `M119 ${y.toFixed(2)}H159`);
+  });
+}
+
+/* ───────── 走纸 ───────── */
+let off = setH * 0.35, v = REDUCE ? 0 : BASE_SPEED, hover = false, drag = null, last = performance.now();
+const mod = (a, n) => ((a % n) + n) % n;
+const led = $('#led'), ledG = $('#ledGlowDot');
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!drag) {
+    const base = REDUCE ? 0 : (hover ? HOVER_SPEED : BASE_SPEED);
+    v += (base - v) * (1 - Math.exp(-dt * 2.4));
+    off += v * dt;
+  }
+  strip.style.transform = `translate3d(0,${(mod(off, setH) - setH).toFixed(2)}px,0)`;
+  drawKnurl(off / 40);                                   // 辊子周长 ≈ 2π·40，纸走多少它转多少
+  const k = Math.min(1, Math.abs(v) / 260);
+  led.setAttribute('opacity', (0.45 + k * 0.55).toFixed(2));
+  ledG.setAttribute('opacity', (0.25 + k * 0.75).toFixed(2));
+  requestAnimationFrame(frame);
+}
+
+addEventListener('wheel', e => {
+  const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * innerHeight : e.deltaY;
+  v = Math.max(-2400, Math.min(2400, v + d * 2.6));
+}, { passive: true });
+
+paper.addEventListener('pointerenter', () => hover = true);
+paper.addEventListener('pointerleave', () => hover = false);
+paper.addEventListener('pointerdown', e => {
+  paper.setPointerCapture(e.pointerId);
+  paper.classList.add('grab');
+  drag = { y: e.clientY, t: performance.now(), v: 0 };
+});
+paper.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const now = performance.now(), dy = (e.clientY - drag.y) / scale, dt = Math.max(1, now - drag.t) / 1000;
+  off += dy;
+  drag.v = drag.v * 0.6 + (dy / dt) * 0.4;
+  drag.y = e.clientY; drag.t = now;
+});
+const endDrag = () => { if (!drag) return; v = Math.max(-2400, Math.min(2400, drag.v)); drag = null; paper.classList.remove('grab'); };
+paper.addEventListener('pointerup', endDrag);
+paper.addEventListener('pointercancel', endDrag);
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === ' ') { v += 420; e.preventDefault(); }
+  if (e.key === 'ArrowUp') { v -= 420; e.preventDefault(); }
+});
+
+/* ───────── logo 轮换：依次虚掉 → 空一拍 → 依次显出 ───────── */
+const logosEl = $('#logos');
+let gi = 0;
+function renderLogos(i, hidden) {
+  logosEl.innerHTML = LOGOS[i].map(h => `<span class="lg${hidden ? ' off' : ''}">${h}</span>`).join('');
+}
+function swapLogos() {
+  const STAG = 75, DUR = 380, GAP = 220;
+  const items = [...logosEl.children];
+  items.forEach((el, j) => { el.style.transitionDelay = (j * STAG) + 'ms'; el.classList.add('off'); });
+  setTimeout(() => {
+    gi = (gi + 1) % LOGOS.length;
+    renderLogos(gi, true);
+    const next = [...logosEl.children];
+    void logosEl.offsetWidth;                          // 先让「虚着」的状态落地，再过渡出来
+    next.forEach((el, j) => { el.style.transitionDelay = (j * STAG) + 'ms'; el.classList.remove('off'); });
+  }, DUR + STAG * 3 + GAP);
+}
+renderLogos(0, false);
+if (!REDUCE) setInterval(swapLogos, LOGO_PERIOD);
+else setInterval(() => { gi = (gi + 1) % LOGOS.length; renderLogos(gi, false); }, LOGO_PERIOD * 2);
+
+layout();
+requestAnimationFrame(t => { last = t; frame(t); });
+</script>
+</body>
+</html>
